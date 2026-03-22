@@ -168,9 +168,14 @@ const LEVELS = [
     boss:      { type:"comisario",    name:"El Comisario" },
     pickups:   ["empanada", "mate", "fernet"],
     bossIntro: "¡EL COMISARIO bloquea la salida de la Comisaría!",
+    introDialogue: [
+      { speaker: "Gaucho", text: "Calle Colón... la comisaría está al fondo.", col: [200, 180, 140], voice: "npc_mid" },
+      { speaker: "Vecina", text: "¡Cuidado, pibe! Los punguistas andan por acá.", col: [180, 140, 160], voice: "npc_high" },
+    ],
     bossDialogue: [
       { speaker: "El Comisario", text: "¡Acá mando yo, pendejo!", col: [40, 50, 80], isBoss: true, voice: "boss_low" },
       { speaker: "El Comisario", text: "¡A la comisaría vas a ir!", col: [40, 50, 80], isBoss: true, voice: "boss_low" },
+      { speaker: "El Comisario", text: "¡Respetá la autoridad!", col: [40, 50, 80], isBoss: true, voice: "boss_low" },
     ],
   },
 
@@ -211,9 +216,14 @@ const LEVELS = [
     boss:      { type:"barra_brava",   name:"El Barra Brava" },
     pickups:   ["empanada", "mate", "choripan"],
     bossIntro: "¡EL BARRA BRAVA baja de la tribuna!",
+    introDialogue: [
+      { speaker: "Gaucho", text: "Barrio Alberdi... acá se pone bravo.", col: [200, 180, 140], voice: "npc_mid" },
+      { speaker: "Trapito", text: "¡Te lo cuido, jefe! ...por unas monedas.", col: [140, 130, 80], voice: "npc_mid" },
+    ],
     bossDialogue: [
       { speaker: "El Barra Brava", text: "¡Belgrano no pierde, hermano!", col: [50, 120, 180], isBoss: true, voice: "boss_mid" },
       { speaker: "El Barra Brava", text: "¡Te rompo todo, gil!", col: [50, 120, 180], isBoss: true, voice: "boss_mid" },
+      { speaker: "El Barra Brava", text: "¡Aguante la B, papá!", col: [50, 120, 180], isBoss: true, voice: "boss_mid" },
     ],
   },
 
@@ -256,9 +266,14 @@ const LEVELS = [
     boss:      { type:"puntero",   name:"El Puntero" },
     pickups:   ["empanada", "choripan", "fernet"],
     bossIntro: "¡EL PUNTERO corta el paso en La Cañada!",
+    introDialogue: [
+      { speaker: "Gaucho", text: "La Cañada... hermoso paseo, pero lleno de punteros.", col: [200, 180, 140], voice: "npc_mid" },
+      { speaker: "Peronista", text: "¡Acá el pueblo manda, compañero!", col: [100, 140, 200], voice: "npc_mid" },
+    ],
     bossDialogue: [
       { speaker: "El Puntero", text: "¡Yo te consigo laburo, votame!", col: [120, 80, 40], isBoss: true, voice: "boss_mid" },
       { speaker: "El Puntero", text: "¡La calle es mía, rajá de acá!", col: [120, 80, 40], isBoss: true, voice: "boss_mid" },
+      { speaker: "El Puntero", text: "¡Votame o rajá!", col: [120, 80, 40], isBoss: true, voice: "boss_mid" },
     ],
   },
 
@@ -298,9 +313,14 @@ const LEVELS = [
     boss:      { type:"intendente",   name:"El Intendente" },
     pickups:   ["empanada", "mate", "fernet", "choripan"],
     bossIntro: "¡EL INTENDENTE sale del Palacio Municipal!",
+    introDialogue: [
+      { speaker: "Gaucho", text: "Centro... el Palacio Municipal. La pelea final.", col: [200, 180, 140], voice: "npc_mid" },
+      { speaker: "Feminista", text: "¡Ni una menos! ¡Dale duro al intendente!", col: [200, 80, 180], voice: "npc_high" },
+    ],
     bossDialogue: [
       { speaker: "El Intendente", text: "¡Córdoba es mía, no me van a voltear!", col: [30, 30, 60], isBoss: true, voice: "boss_low" },
       { speaker: "El Intendente", text: "¡Soy intocable!", col: [30, 30, 60], isBoss: true, voice: "boss_low" },
+      { speaker: "El Intendente", text: "¡Tengo todo el poder del municipio!", col: [30, 30, 60], isBoss: true, voice: "boss_low" },
     ],
   },
 ];

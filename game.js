@@ -327,8 +327,12 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
     setupPlayerAttacks(p);   // registers onKeyPress handlers (defined below)
   }
 
-  // Kick off wave 1
-  advanceWave();
+  // Level intro dialogue, then kick off wave 1
+  if (lvl.introDialogue && lvl.introDialogue.length > 0) {
+    showDialogue(lvl.introDialogue, () => advanceWave());
+  } else {
+    advanceWave();
+  }
 
   // ── Wave / boss system ──────────────────────────────────────────────────────
 
