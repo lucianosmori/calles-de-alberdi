@@ -572,7 +572,7 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
   }
 
   function hitPlayer(p, damage) {
-    if (p.hurtTimer > 0 || p.hp <= 0) return;   // invincibility or already dead
+    if (debugGodMode || p.hurtTimer > 0 || p.hp <= 0) return;
 
     p.hp        = Math.max(0, p.hp - damage);
     p.state     = "hurt";
@@ -585,17 +585,49 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
 
 
   // ── Debug cheats (remove before release) ────────────────────────────────────
-  // Keyboard: ` = skip wave, - = skip level
-  // Mobile:   hold BACK + tap PUNCH = skip wave, hold BACK + tap KICK = skip level
+  // }  = skip wave (kill all enemies)
+  // -  = skip level
+  // B  = skip straight to boss
+  // G  = toggle god mode (invincible)
+  // T  = toggle auto-walk right
+  // Mobile: hold BACK + tap PUNCH = skip wave, hold BACK + tap KICK = skip level
+  let debugGodMode  = false;
+  let debugAutoWalk = false;
+
   function debugSkipWave() { [...enemies].forEach(e => killEnemy(e)); }
   function debugSkipLevel() {
     const next = levelIdx + 1;
     if (next < LEVELS.length) go("game", { numPlayers, levelIdx: next });
   }
+  function debugSkipToBoss() {
+    [...enemies].forEach(e => killEnemy(e));
+    // Force all waves done, jump to boss
+    waveIdx = lvl.waves.length - 1;
+    currentSection = sections.length - 1;
+    sectionWallX = sections[currentSection].endX - SECTION_WALL_MARGIN;
+    sectionOpen = false;
+    // Move player to final section
+    players.forEach(p => { if (p.hp > 0) p.pos.x = sections[currentSection].startX + 100; });
+  }
+
   onKeyPress("}", debugSkipWave);
   onKeyPress("-", debugSkipLevel);
+  onKeyPress("b", debugSkipToBoss);
+  onKeyPress("g", () => { debugGodMode = !debugGodMode; console.log("[DEBUG] God mode", debugGodMode ? "ON" : "OFF"); });
+  onKeyPress("t", () => { debugAutoWalk = !debugAutoWalk; console.log("[DEBUG] Auto-walk", debugAutoWalk ? "ON" : "OFF"); });
   onKeyPress("z", () => { if (isKeyDown("tab")) debugSkipWave(); });   // BACK+PUNCH
   onKeyPress("x", () => { if (isKeyDown("tab")) debugSkipLevel(); });  // BACK+KICK
+
+  // Auto-walk: move player right automatically
+  onUpdate(() => {
+    if (!debugAutoWalk) return;
+    const bounds = getSectionBounds();
+    players.forEach(p => {
+      if (p.hp <= 0) return;
+      p.pos.x = Math.min(p.pos.x + PLAYER_SPEED * dt(), bounds.right);
+      p.facing = 1;
+    });
+  });
 
   // ── Main update loops ───────────────────────────────────────────────────────
 
