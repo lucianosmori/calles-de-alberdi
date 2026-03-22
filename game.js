@@ -611,14 +611,15 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
     sectionOpen = false;
     [...enemies].forEach(e => { e.hp = 0; destroy(e); });
     enemies.length = 0;
-    // Move player to final section and start boss
+    // Move player to final section, snap camera, start boss
     players.forEach(p => { if (p.hp > 0) p.pos.x = sections[currentSection].startX + 100; });
+    _camSnap = true;
     beginBossSequence();
   }
 
   onKeyPress("}", debugSkipWave);
   onKeyPress("-", debugSkipLevel);
-  onKeyPress("b", debugSkipToBoss);
+  onKeyPress("b", () => { if (!isDialogueActive()) debugSkipToBoss(); });
   onKeyPress("g", () => { debugGodMode = !debugGodMode; console.log("[DEBUG] God mode", debugGodMode ? "ON" : "OFF"); });
   onKeyPress("t", () => { debugAutoWalk = !debugAutoWalk; console.log("[DEBUG] Auto-walk", debugAutoWalk ? "ON" : "OFF"); });
   onKeyPress("z", () => { if (isKeyDown("tab")) debugSkipWave(); });   // BACK+PUNCH
@@ -772,6 +773,7 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
   // ── Camera: dead zone + vertical depth tracking ─────────────────────────
   let _camX = VIEW_W / 2;
   let _camY = VIEW_H / 2;
+  let _camSnap = false;  // set true to snap camera instantly (debug teleport)
 
   onUpdate(() => {
     const living = players.filter(p => p.hp > 0);
@@ -795,9 +797,9 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
     const yOff = ((avgY - groundMid) / (GROUND_BOTTOM - GROUND_TOP)) * CAM_VERT_RANGE * 2;
     let targetY = VIEW_H / 2 + yOff;
 
-    // Smooth lerp
-    _camX = lerp(_camX, targetX, CAM_LERP_X);
-    _camY = lerp(_camY, targetY, CAM_LERP_Y);
+    // Smooth lerp (or snap if flagged)
+    if (_camSnap) { _camX = targetX; _camY = targetY; _camSnap = false; }
+    else { _camX = lerp(_camX, targetX, CAM_LERP_X); _camY = lerp(_camY, targetY, CAM_LERP_Y); }
     setCamScale(1);
     setCamPos(_camX, _camY);
   });
