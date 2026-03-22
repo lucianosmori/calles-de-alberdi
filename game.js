@@ -604,14 +604,16 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
     if (next < LEVELS.length) go("game", { numPlayers, levelIdx: next });
   }
   function debugSkipToBoss() {
-    [...enemies].forEach(e => killEnemy(e));
-    // Force all waves done, jump to boss
-    waveIdx = lvl.waves.length - 1;
+    // Set state BEFORE killing enemies (killEnemy triggers checkWaveCleared)
+    waveIdx = lvl.waves.length;  // past all waves so checkWaveCleared won't re-trigger
     currentSection = sections.length - 1;
     sectionWallX = sections[currentSection].endX - SECTION_WALL_MARGIN;
     sectionOpen = false;
-    // Move player to final section
+    [...enemies].forEach(e => { e.hp = 0; destroy(e); });
+    enemies.length = 0;
+    // Move player to final section and start boss
     players.forEach(p => { if (p.hp > 0) p.pos.x = sections[currentSection].startX + 100; });
+    beginBossSequence();
   }
 
   onKeyPress("}", debugSkipWave);
