@@ -60,7 +60,7 @@ function isDialogueActive() {
 // ── Input wiring (call once per scene) ───────────────────────────────────────
 
 function initDialogueInput() {
-  const advanceKeys = ["enter", "z", "u"];
+  const advanceKeys = ["enter", "z", "u", "b", "space"];
   advanceKeys.forEach(k => {
     onKeyPress(k, () => { if (_dlgActive) _dlgAdvancePressed = true; });
   });
@@ -283,13 +283,16 @@ function drawDialogue() {
     color:  rgb(230, 225, 210),
   });
 
-  // Pulsing ▼ indicator when line is complete
+  // Pulsing advance indicator + hint when line is complete
   if (_dlgDone) {
     const alpha = 0.4 + 0.6 * Math.abs(Math.sin(time() * 3));
+    const isMobile = window.matchMedia("(pointer: coarse)").matches;
+    const hint = isMobile ? "Tocá para continuar  \u25bc" : "Enter  \u25bc";
     drawText({
-      text:    "\u25bc",
-      pos:     vec2(VIEW_W - pad - 16, boxY + boxH - pad - 10),
-      size:    12,
+      text:    hint,
+      pos:     vec2(VIEW_W - pad - 8, boxY + boxH - pad - 8),
+      size:    8,
+      anchor:  "right",
       color:   rgb(255, 245, 120),
       opacity: alpha,
     });

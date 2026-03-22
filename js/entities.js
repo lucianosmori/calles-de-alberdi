@@ -642,7 +642,9 @@ function updatePlayerMovement(p, bounds) {
   const bLeft  = bounds ? bounds.left  : 20;
   const bRight = bounds ? bounds.right : SCREEN_W - 20;
   p.pos.x = clamp(p.pos.x, bLeft, bRight);
-  p.pos.y = clamp(p.pos.y, GROUND_TOP + 24, GROUND_BOTTOM);
+  const yBottom = (typeof isDialogueActive === "function" && isDialogueActive())
+    ? GROUND_BOTTOM - 60 : GROUND_BOTTOM;
+  p.pos.y = clamp(p.pos.y, GROUND_TOP + 24, yBottom);
 
   // Depth sort — z = feet y so characters lower on screen draw in front
   p.z = p.pos.y;
