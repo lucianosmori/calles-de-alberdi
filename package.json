@@ -1,0 +1,13 @@
+{
+  "name": "calles-de-alberdi",
+  "version": "1.0.0",
+  "description": "2D side-scrolling beat 'em up set in Barrio Alberdi, Córdoba, Argentina",
+  "private": true,
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.0",
+    "serve": "^14.2.0"
+  }
+}
