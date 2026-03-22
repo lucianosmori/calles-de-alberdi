@@ -760,7 +760,7 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
     drawWeather();
     const cam = camPos();
     pushTransform();
-    pushTranslate(-cam.x + VIEW_W / 2, -cam.y + VIEW_H / 2);
+    pushTranslate(cam.x - VIEW_W / 2, cam.y - VIEW_H / 2);
     drawHUD(players, waveIdx, lvl, enemies, bossObjs, phase, score, comboCount);
     drawDialogue();
     popTransform();
@@ -822,7 +822,7 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
 
     const cam2 = camPos();
     pushTransform();
-    pushTranslate(-cam2.x + VIEW_W / 2, -cam2.y + VIEW_H / 2);
+    pushTranslate(cam2.x - VIEW_W / 2, cam2.y - VIEW_H / 2);
 
     const t = goArrowTimer;
     const vw = typeof VIEW_W !== "undefined" ? VIEW_W : SCREEN_W;
