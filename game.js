@@ -104,11 +104,16 @@ const Music = (() => {
 scene("title", () => {
   setCamScale(1); setCamPos(VIEW_W / 2, VIEW_H / 2);  // reset from any game-scene camera
 
+  // Initialize Supabase (async, non-blocking — logs status to console)
+  initSupabase().then(sb => {
+    if (sb) console.log("[Supabase] Connected");
+  });
+
   const cx = VIEW_W / 2;   // horizontal centre of viewport
 
   // ── Level select state ──────────────────────────────────────────────────────
   let selectedLevel  = 0;
-  let autoStartTimer = 5;
+  let autoStartTimer = 7;
 
   // Background
   add([rect(VIEW_W, VIEW_H), pos(0, 0), color(10, 12, 22), fixed(), z(0)]);
@@ -118,11 +123,11 @@ scene("title", () => {
   add([rect(VIEW_W, 40),  pos(0, VIEW_H - 40),  color(45, 30, 12),  fixed(), z(1)]);
 
   // Title
-  add([text("CALLES DE ALBERDI", { size: 36, align: "center" }),
-       pos(cx, 65), anchor("center"),
+  add([text("CALLES DE ALBERDI", { size: 28, align: "center", width: VIEW_W - 40 }),
+       pos(cx, 60), anchor("center"),
        color(255, 200, 50), fixed(), z(10)]);
-  add([text("Barrio Cordobés", { size: 16, align: "center" }),
-       pos(cx, 116), anchor("center"),
+  add([text("Barrio Cordobés", { size: 14, align: "center" }),
+       pos(cx, 90), anchor("center"),
        color(160, 200, 220), fixed(), z(10)]);
 
   // ── Level list (drawn each frame) ─────────────────────────────────────────
@@ -157,7 +162,7 @@ scene("title", () => {
     ]);
     hitRect.onClick(() => {
       selectedLevel  = i;
-      autoStartTimer = 5;
+      autoStartTimer = 7;
     });
 
     levelObjs.push({ cursor, label });
@@ -179,10 +184,10 @@ scene("title", () => {
     prompt.opacity = 0.5 + 0.5 * Math.sin(flashT * 3.5);
   });
 
-  // Auto-start timer label
+  // Auto-start timer label (between prompt and leaderboard)
   const timerLabel = add([
     text("", { size: 9, align: "center" }),
-    pos(cx, listStartY + LEVELS.length * rowH + 36), anchor("center"),
+    pos(cx, listStartY + LEVELS.length * rowH + 32), anchor("center"),
     color(160, 155, 130), fixed(), z(10),
   ]);
 
@@ -201,7 +206,7 @@ scene("title", () => {
 
   // ── Leaderboard on title ──────────────────────────────────────────────────
   const lbY = isMobile
-    ? listStartY + LEVELS.length * rowH + 52
+    ? listStartY + LEVELS.length * rowH + 52 + 14
     : listStartY + LEVELS.length * rowH + 78;
   const lbText = add([
     text("", { size: 9, align: "center", width: VIEW_W - 20 }),
@@ -222,10 +227,10 @@ scene("title", () => {
        pos(cx, VIEW_H - 18), anchor("center"),
        color(70, 70, 80), fixed(), z(10)]);
 
-  // Snow on title screen
-  initSnow(45);
-  onUpdate(() => updateSnow());
-  onDraw(() => drawSnow());
+  // Rain on title screen
+  initWeather("rain", 45);
+  onUpdate(() => updateWeather());
+  onDraw(() => drawWeather());
 
   // ── Update cursor visibility + timer each frame ────────────────────────────
   onUpdate(() => {
@@ -248,7 +253,7 @@ scene("title", () => {
   });
 
   // ── Input ──────────────────────────────────────────────────────────────────
-  const resetTimer = () => { autoStartTimer = 5; };
+  const resetTimer = () => { autoStartTimer = 7; };
 
   const navUp   = () => { selectedLevel = Math.max(0, selectedLevel - 1);              resetTimer(); };
   const navDown = () => { selectedLevel = Math.min(LEVELS.length - 1, selectedLevel + 1); resetTimer(); };
@@ -283,22 +288,36 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
   let comboCount  = 0;    // consecutive hits within COMBO_WINDOW
   let comboTimer  = 0;    // seconds remaining in current combo window
 
+  // ── Section locking state ──────────────────────────────────────────────────
+  const levelW        = lvl.levelWidth || SCREEN_W;
+  const sections      = lvl.sections || [{ startX: 0, endX: levelW }];
+  let currentSection  = 0;
+  let sectionWallX    = sections[0].endX - SECTION_WALL_MARGIN;
+  let sectionOpen     = false;
+  let goArrowTimer    = 0;
+
+  // Expose level width for entities.js (speech bubbles, NPC clamping)
+  window._currentLevelWidth = levelW;
+
+  // ── Dialogue system input ──────────────────────────────────────────────────
+  initDialogueInput();
+
   // ── Build the scene ─────────────────────────────────────────────────────────
   Music.play("level");
   drawLevelBackground(lvl);
-  initSnow(52);
+  initWeather(lvl.weather || "rain", 52);
 
-  // Background NPCs
+  // Background NPCs (spread across the full level width)
   const npcCount = 5 + lvl.npcTypes.length * 2;
   for (let i = 0; i < npcCount; i++) {
     const type = choose(lvl.npcTypes);
-    npcs.push(spawnNPC(type, rand(50, SCREEN_W - 50), rand(GROUND_TOP + 28, GROUND_BOTTOM - 8)));
+    npcs.push(spawnNPC(type, rand(50, levelW - 50), rand(GROUND_TOP + 28, GROUND_BOTTOM - 8)));
   }
 
-  // Initial pickups scattered around the level
+  // Initial pickups scattered across the level
   for (let i = 0; i < 3; i++) {
     const type = choose(lvl.pickups);
-    pickups.push(spawnPickup(type, rand(80, SCREEN_W - 80), rand(GROUND_TOP + 40, GROUND_BOTTOM - 12)));
+    pickups.push(spawnPickup(type, rand(80, levelW - 80), rand(GROUND_TOP + 40, GROUND_BOTTOM - 12)));
   }
 
   // Spawn player(s)
@@ -326,13 +345,19 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
   }
 
   function spawnWaveEnemies(waveDef) {
+    const section = sections[currentSection];
     let delay = 0.5;
     for (const group of waveDef) {
       for (let i = 0; i < group.count; i++) {
         wait(delay, () => {
           if (phase !== "wave") return;
           const y = rand(GROUND_TOP + 30, GROUND_BOTTOM - 10);
-          enemies.push(spawnEnemy(group.type, SCREEN_W + rand(20, 80), y));
+          // Spawn from right side of section (70%) or left side (30%)
+          const fromRight = Math.random() > 0.3;
+          const x = fromRight
+            ? section.endX + rand(20, 60)
+            : section.startX - rand(20, 60);
+          enemies.push(spawnEnemy(group.type, x, y));
         });
         delay += 0.65;
       }
@@ -341,10 +366,11 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
 
   function beginBossSequence() {
     phase = "bossIntro";
-    showBanner(lvl.bossIntro, 2.5);
     Music.play("boss");
 
-    wait(3, () => {
+    // Use dialogue if available, otherwise fall back to banner
+    const dialogueLines = lvl.bossDialogue;
+    const spawnBosses = () => {
       phase    = "boss";
       bossObjs = [];
 
@@ -355,19 +381,34 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
 
       bossList.forEach((b, i) => {
         const bossY = lerp(GROUND_TOP + 30, GROUND_BOTTOM - 10, (i + 1) / (bossList.length + 1));
-        const boss  = spawnEnemy(b.type, SCREEN_W - 60 - i * 55, bossY);
+        const bossSection = sections[currentSection];
+        const boss  = spawnEnemy(b.type, bossSection.endX - 60 - i * 55, bossY);
         enemies.push(boss);
         bossObjs.push(boss);
       });
-    });
+    };
+
+    if (dialogueLines && dialogueLines.length > 0) {
+      showDialogue(dialogueLines, spawnBosses);
+    } else {
+      showBanner(lvl.bossIntro, 2.5);
+      wait(3, spawnBosses);
+    }
   }
 
   function checkWaveCleared() {
     if (enemies.length > 0) return;
 
     if (phase === "wave") {
+      // Section cleared — open the wall so player can walk forward
+      sectionOpen = true;
+      goArrowTimer = 0;
       showBanner("WAVE  CLEAR!", 1.2);
-      wait(1.8, () => advanceWave());
+      // If this is the last section before boss, auto-advance after delay
+      if (waveIdx >= lvl.waves.length - 1) {
+        wait(1.8, () => beginBossSequence());
+      }
+      // Otherwise, player must walk into next section to trigger advanceWave
 
     } else if (phase === "boss") {
       phase = "levelClear";
@@ -381,7 +422,10 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
           go("game", { numPlayers, levelIdx: next, score });
         } else {
           Music.stop();
-          go("victory", { numPlayers, score });
+          const playerName = numPlayers === 2
+            ? PLAYER_CONFIGS[0].name + " & " + PLAYER_CONFIGS[1].name
+            : PLAYER_CONFIGS[0].name;
+          go("victory", { numPlayers, score, playerName });
         }
       });
     }
@@ -480,7 +524,8 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
     // Knockback away from attacker
     if (attacker) {
       e.pos.x += attacker.facing * KNOCKBACK;
-      e.pos.x  = clamp(e.pos.x, 20, SCREEN_W - 20);
+      const kb = getSectionBounds();
+      e.pos.x  = clamp(e.pos.x, kb.left, kb.right);
     }
 
     // Combo tracking
@@ -562,17 +607,53 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
     }
   });
 
+  // ── Section bounds computation (shared by all entity updates) ──────────
+  function getSectionBounds() {
+    const sec = sections[currentSection];
+    const leftBound  = sec.startX + 20;
+    // When section open, extend right bound into next section (if any)
+    let rightBound;
+    if (sectionOpen && currentSection < sections.length - 1) {
+      rightBound = sections[currentSection + 1].endX - SECTION_WALL_MARGIN;
+    } else {
+      rightBound = sectionWallX;
+    }
+    return { left: leftBound, right: rightBound };
+  }
+
+  // ── Section transition detection ────────────────────────────────────────
+  onUpdate(() => {
+    if (!sectionOpen) return;
+    if (currentSection >= sections.length - 1) return;  // already in last section
+    const living = players.filter(p => p.hp > 0);
+    const nextSectionStart = sections[currentSection + 1].startX;
+    const anyInNextSection = living.some(p => p.pos.x > nextSectionStart + 20);
+    if (anyInNextSection) {
+      currentSection++;
+      sectionOpen = false;
+      sectionWallX = sections[currentSection].endX - SECTION_WALL_MARGIN;
+      advanceWave();
+    }
+  });
+
+  // ── Dialogue update ──────────────────────────────────────────────────────
+  onUpdate(() => updateDialogue());
+
   // Player movement (attack/hurt timers are ticked inside updatePlayerMovement)
   onUpdate(() => {
+    if (isDialogueActive()) return;
+    const bounds = getSectionBounds();
     for (const p of players) {
       if (p.hp <= 0) continue;
-      updatePlayerMovement(p);
+      updatePlayerMovement(p, bounds);
     }
   });
 
   // Enemy AI — target the closest living player
   onUpdate(() => {
+    if (isDialogueActive()) return;
     const livingPlayers = players.filter(p => p.hp > 0);
+    const bounds = getSectionBounds();
 
     for (const e of [...enemies]) {
       if (e.state === "dead") continue;
@@ -583,13 +664,14 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
       )[0];
       if (!target) continue;
 
-      updateEnemy(e, target, (dmg) => hitPlayer(target, dmg));
+      updateEnemy(e, target, (dmg) => hitPlayer(target, dmg), bounds);
     }
   });
 
-  // NPC AI
+  // NPC AI (NPCs roam the full level, not locked to current section)
   onUpdate(() => {
-    for (const n of npcs) updateNPC(n, players, enemies);
+    const npcBounds = { left: 20, right: levelW - 20 };
+    for (const n of npcs) updateNPC(n, players, enemies, npcBounds);
   });
 
   // Pickup collection — walk over to grab
@@ -628,35 +710,184 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
     }
   });
 
-  // Snow + HUD
-  onUpdate(() => updateSnow());
+  // Weather + HUD
+  onUpdate(() => updateWeather());
   onDraw(() => {
-    drawSnow();
+    drawWeather();
+    const cam = camPos();
+    pushTransform();
+    pushTranslate(-cam.x + VIEW_W / 2, -cam.y + VIEW_H / 2);
     drawHUD(players, waveIdx, lvl, enemies, bossObjs, phase, score, comboCount);
+    drawDialogue();
+    popTransform();
   });
 
   // Game-over check — all players dead
   onUpdate(() => {
     if (players.length > 0 && players.every(p => p.hp <= 0)) {
-      wait(0.6, () => { Music.stop(); go("gameover", { numPlayers, levelIdx, score }); });
+      const playerName = numPlayers === 2
+        ? PLAYER_CONFIGS[0].name + " & " + PLAYER_CONFIGS[1].name
+        : PLAYER_CONFIGS[0].name;
+      wait(0.6, () => { Music.stop(); go("gameover", { numPlayers, levelIdx, score, playerName }); });
     }
   });
 
-  // ── Camera follow ────────────────────────────────────────────────────────
-  // Viewport width (VIEW_W) matches the screen aspect, so the game fills the
-  // entire display.  In portrait the view is narrow (~185 units); camera pans
-  // to keep the player centered.  Clamped so we never show outside the world.
+  // ── Camera: dead zone + vertical depth tracking ─────────────────────────
   let _camX = VIEW_W / 2;
+  let _camY = VIEW_H / 2;
+
   onUpdate(() => {
     const living = players.filter(p => p.hp > 0);
-    const targetX = living.length > 0
-      ? living.reduce((s, p) => s + p.pos.x, 0) / living.length
-      : SCREEN_W / 2;
+    if (!living.length) return;
+
+    const avgX = living.reduce((s, p) => s + p.pos.x, 0) / living.length;
+    const avgY = living.reduce((s, p) => s + p.pos.y, 0) / living.length;
+
+    // Dead zone — camera only moves when player exits the central zone
+    const dzW = VIEW_W * CAM_DEAD_ZONE_X;
+    let targetX = _camX;
+    if (avgX < _camX - dzW / 2) targetX = avgX + dzW / 2;
+    if (avgX > _camX + dzW / 2) targetX = avgX - dzW / 2;
+
+    // Clamp so camera never shows outside the level
     const halfVW = VIEW_W / 2;
-    const camX = clamp(targetX, halfVW, SCREEN_W - halfVW);
-    _camX = lerp(_camX, camX, 0.08);
+    targetX = clamp(targetX, halfVW, levelW - halfVW);
+
+    // Vertical depth — subtle shift based on Y within the ground band
+    const groundMid = (GROUND_TOP + GROUND_BOTTOM) / 2;
+    const yOff = ((avgY - groundMid) / (GROUND_BOTTOM - GROUND_TOP)) * CAM_VERT_RANGE * 2;
+    let targetY = VIEW_H / 2 + yOff;
+
+    // Smooth lerp
+    _camX = lerp(_camX, targetX, CAM_LERP_X);
+    _camY = lerp(_camY, targetY, CAM_LERP_Y);
     setCamScale(1);
-    setCamPos(_camX, VIEW_H / 2);
+    setCamPos(_camX, _camY);
+  });
+
+  // ── "GO >>>" arcade indicator when section is cleared ──────────────────
+  //  Cadillacs-and-Dinosaurs style: big bouncing arrow on right side of
+  //  screen with "GO!" text, pulsing size, bold yellow/orange with outline.
+  onUpdate(() => {
+    if (sectionOpen) goArrowTimer += dt();
+  });
+  onDraw(() => {
+    if (!sectionOpen || phase !== "wave") return;
+    if (currentSection >= sections.length - 1) return;
+
+    const cam2 = camPos();
+    pushTransform();
+    pushTranslate(-cam2.x + VIEW_W / 2, -cam2.y + VIEW_H / 2);
+
+    const t = goArrowTimer;
+    const vw = typeof VIEW_W !== "undefined" ? VIEW_W : SCREEN_W;
+    const vh = typeof VIEW_H !== "undefined" ? VIEW_H : SCREEN_H;
+
+    // Bounce: sine-wave vertical bob (8px amplitude)
+    const bounceY = Math.sin(t * 3.2) * 8;
+    // Pulse: scale oscillates between 0.85 and 1.15
+    const pulse = 1.0 + 0.15 * Math.sin(t * 4.5);
+    // Alpha: gentle throb so it never fully disappears
+    const alpha = 0.7 + 0.3 * Math.sin(t * GO_ARROW_BLINK_HZ * Math.PI * 2);
+
+    // Position: right side of screen, vertically centred
+    const cx = vw - 55;
+    const cy = vh / 2 - 10 + bounceY;
+
+    // Arrow dimensions (before pulse)
+    const arrowW  = 44 * pulse;   // width of the triangle part
+    const arrowH  = 52 * pulse;   // full height
+    const shaftW  = 26 * pulse;   // rectangle shaft width
+    const shaftH  = 24 * pulse;   // rectangle shaft height
+    const halfH   = arrowH / 2;
+
+    // ── Outline (dark border) — draw everything shifted by 2px in each dir ──
+    const outlineOff = 2;
+    const outlineCol = rgb(80, 40, 0);
+    for (const ox of [-outlineOff, 0, outlineOff]) {
+      for (const oy of [-outlineOff, 0, outlineOff]) {
+        if (ox === 0 && oy === 0) continue;
+        // Shaft outline
+        drawRect({
+          pos: vec2(cx - shaftW + ox, cy - shaftH / 2 + oy),
+          width: shaftW, height: shaftH,
+          color: outlineCol, opacity: alpha,
+        });
+        // Arrowhead outline (stacked rects to approximate triangle)
+        const baseX = cx + ox;
+        for (let i = 0; i < 6; i++) {
+          const frac = i / 5;
+          const rx = baseX + arrowW * frac;
+          const rh = arrowH * (1 - frac);
+          drawRect({
+            pos: vec2(rx, cy - rh / 2 + oy),
+            width: arrowW / 5 + 2, height: rh,
+            color: outlineCol, opacity: alpha,
+          });
+        }
+      }
+    }
+
+    // ── Main arrow fill ─────────────────────────────────────────────────────
+    const fillCol = rgb(255, 210, 30);   // bright arcade yellow
+
+    // Shaft (rectangle part)
+    drawRect({
+      pos: vec2(cx - shaftW, cy - shaftH / 2),
+      width: shaftW, height: shaftH,
+      color: fillCol, opacity: alpha,
+    });
+
+    // Arrowhead — approximated with stacked vertical rects (tapers to point)
+    for (let i = 0; i < 6; i++) {
+      const frac = i / 5;
+      const rx = cx + arrowW * frac;
+      const rh = arrowH * (1 - frac);
+      // Gradient from yellow to orange toward tip
+      const r = Math.round(255);
+      const g = Math.round(210 - 60 * frac);
+      const b = Math.round(30 - 10 * frac);
+      drawRect({
+        pos: vec2(rx, cy - rh / 2),
+        width: arrowW / 5 + 2, height: rh,
+        color: rgb(r, g, b), opacity: alpha,
+      });
+    }
+
+    // ── Inner highlight stripe (gives depth) ────────────────────────────────
+    drawRect({
+      pos: vec2(cx - shaftW + 3, cy - shaftH / 2 + 3),
+      width: shaftW - 4, height: 5,
+      color: rgb(255, 245, 160), opacity: alpha * 0.6,
+    });
+
+    // ── "GO!" text above the arrow ──────────────────────────────────────────
+    const textSize = Math.round(22 * pulse);
+    // Text outline
+    for (const ox of [-1, 0, 1]) {
+      for (const oy of [-1, 0, 1]) {
+        if (ox === 0 && oy === 0) continue;
+        drawText({
+          text: "GO!",
+          pos: vec2(cx - 4 + ox, cy - halfH - 10 + oy),
+          size: textSize,
+          color: rgb(80, 40, 0),
+          opacity: alpha,
+          anchor: "center",
+        });
+      }
+    }
+    // Text fill
+    drawText({
+      text: "GO!",
+      pos: vec2(cx - 4, cy - halfH - 10),
+      size: textSize,
+      color: rgb(255, 230, 60),
+      opacity: alpha,
+      anchor: "center",
+    });
+
+    popTransform();
   });
 
 
@@ -676,7 +907,7 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
 // SCENE — GAME OVER
 // =============================================================================
 
-scene("gameover", ({ numPlayers = 1, levelIdx = 0, score = 0 }) => {
+scene("gameover", ({ numPlayers = 1, levelIdx = 0, score = 0, playerName = "GAUCHO" }) => {
   setCamScale(1); setCamPos(VIEW_W / 2, VIEW_H / 2);
 
   const lvl = LEVELS[levelIdx];
@@ -684,7 +915,7 @@ scene("gameover", ({ numPlayers = 1, levelIdx = 0, score = 0 }) => {
   const isMobile = window.matchMedia("(pointer: coarse)").matches;
 
   // Submit score to leaderboard
-  submitScore("GAUCHO", score, levelIdx + 1);
+  submitScore(playerName, score, levelIdx + 1);
 
   // Dark overlay
   add([rect(VIEW_W, VIEW_H), pos(0, 0), color(0, 0, 0), opacity(0.82), fixed(), z(998)]);
@@ -696,9 +927,9 @@ scene("gameover", ({ numPlayers = 1, levelIdx = 0, score = 0 }) => {
        pos(cx, VIEW_H / 2), anchor("center"),
        color(255, 70, 70), fixed(), z(999)]);
 
-  initSnow(30);
-  onUpdate(() => updateSnow());
-  onDraw(() => drawSnow());
+  initWeather("rain", 30);
+  onUpdate(() => updateWeather());
+  onDraw(() => drawWeather());
 
   onKeyPress("enter", () => go("game", { numPlayers, levelIdx }));
   onKeyPress("tab",   () => go("title"));
@@ -709,14 +940,14 @@ scene("gameover", ({ numPlayers = 1, levelIdx = 0, score = 0 }) => {
 // SCENE — VICTORY
 // =============================================================================
 
-scene("victory", ({ numPlayers = 1, score = 0 }) => {
+scene("victory", ({ numPlayers = 1, score = 0, playerName = "GAUCHO" }) => {
   setCamScale(1); setCamPos(VIEW_W / 2, VIEW_H / 2);
 
   const cx = VIEW_W / 2;
   const isMobile = window.matchMedia("(pointer: coarse)").matches;
 
   // Submit score to leaderboard
-  submitScore("GAUCHO", score, LEVELS.length);
+  submitScore(playerName, score, LEVELS.length);
 
   add([rect(VIEW_W, VIEW_H), pos(0, 0), color(10, 20, 10), fixed(), z(0)]);
 
@@ -757,10 +988,10 @@ scene("victory", ({ numPlayers = 1, score = 0 }) => {
        pos(cx, 320), anchor("center"),
        color(255, 245, 120), fixed(), z(10)]);
 
-  // Celebratory heavy snow
-  initSnow(90);
-  onUpdate(() => updateSnow());
-  onDraw(() => drawSnow());
+  // Celebratory heavy rain
+  initWeather("rain", 90);
+  onUpdate(() => updateWeather());
+  onDraw(() => drawWeather());
 
   onKeyPress("enter", () => go("game", { numPlayers, levelIdx: 0 }));
   onKeyPress("tab",   () => go("title"));

@@ -20,188 +20,55 @@
  * @param {object} lvl — level data object from LEVELS[]
  */
 function drawLevelBackground(lvl) {
+  const levelW = lvl.levelWidth || SCREEN_W;
+
   // -- Colour helpers --
   const dk = (c, a) => [Math.max(0,c[0]-a), Math.max(0,c[1]-a), Math.max(0,c[2]-a)];
   const lt = (c, a) => [Math.min(255,c[0]+a), Math.min(255,c[1]+a), Math.min(255,c[2]+a)];
 
   // ── Sky gradient (4 bands for depth) ──────────────────────────────────────
-  // World-space (not fixed) so they pan correctly with the camera.
-  // Extra wide so they cover any camera position within the 800-wide world.
   const skyBands = 4;
   const bandH = Math.ceil(GROUND_TOP / skyBands);
   for (let i = 0; i < skyBands; i++) {
     const f = i / (skyBands - 1);
-    add([rect(SCREEN_W + 200, bandH + 1), pos(-100, i * bandH),
+    add([rect(levelW + 200, bandH + 1), pos(-100, i * bandH),
          color(lvl.skyCol[0] + f * 12, lvl.skyCol[1] + f * 8, lvl.skyCol[2] + f * 15),
          z(-300)]);
   }
 
+  // ── Distant skyline silhouettes (procedurally fill level width) ──────────
   {
-  // ── Distant skyline silhouettes ───────────────────────────────────────────
-  const sils = [{x:25,w:40,h:55},{x:140,w:30,h:40},{x:280,w:50,h:70},{x:450,w:35,h:48},
-                {x:580,w:45,h:62},{x:700,w:38,h:44},{x:760,w:42,h:58}];
-  for (const sl of sils) {
-    add([rect(sl.w, sl.h), pos(sl.x, GROUND_TOP - sl.h - 145),
-         color(...dk(lvl.skyCol, 6)), z(-299)]);
-    // Tiny lit window on silhouette
-    add([rect(3, 3), pos(sl.x + sl.w / 2, GROUND_TOP - sl.h - 140),
-         color(180, 170, 100), opacity(0.4), z(-298)]);
-  }
-
-  // ── Storefronts ───────────────────────────────────────────────────────────
-  for (const s of lvl.stores) {
-    const wt = GROUND_TOP - s.h; // wall top y
-    const sc  = s.signCol     || [200, 40, 40];
-    const stc = s.signTextCol || [255, 255, 255];
-    const ac  = s.awningCol   || dk(s.col, 10);
-
-    // ─ Wall ─
-    add([rect(s.w - 2, s.h), pos(s.x + 1, wt),
-         color(...s.col), z(-290)]);
-
-    // ─ Roof ledge ─
-    add([rect(s.w + 2, 5), pos(s.x - 1, wt - 3),
-         color(...dk(s.col, 35)), z(-289)]);
-
-    // ─ Snow on roof ─
-    add([rect(s.w - 4, 7), pos(s.x + 2, wt - 8),
-         color(228, 234, 248), z(-288)]);
-    // Icicle drips
-    let ic = s.x + 14;
-    while (ic < s.x + s.w - 10) {
-      const icicleH = 3 + Math.floor(Math.random() * 6);
-      add([rect(2, icicleH), pos(ic, wt),
-           color(210, 220, 242), z(-287)]);
-      ic += 16 + Math.floor(Math.random() * 20);
-    }
-
-    // ─ Layout: split building into upper floors (60%) and ground floor (40%) ─
-    const gfFrac = 0.35;  // ground floor gets 35% of building height
-    const signH = 26;
-    const awnH = 9;
-    const signY = wt + Math.floor(s.h * (1 - gfFrac)) - signH;
-
-    // ─ Wall panel lines (subtle siding) ─
-    for (let ly = wt + 18; ly < signY - 4; ly += 20) {
-      add([rect(s.w - 6, 1), pos(s.x + 3, ly),
-           color(...dk(s.col, 16)), z(-285)]);
-    }
-
-    // ─ Windows (framed glass with highlight) ─
-    const winW = 16, winH = 18, winGapX = 8, winGapY = 8;
-    const winAreaTop = wt + 10;
-    const winAreaBot = signY - 6;
-    const numCols = Math.max(1, Math.floor((s.w - 22 + winGapX) / (winW + winGapX)));
-    const totalWinW = numCols * winW + (numCols - 1) * winGapX;
-    const winOffX = s.x + Math.floor((s.w - totalWinW) / 2);
-
-    for (let wy = winAreaTop; wy + winH <= winAreaBot; wy += winH + winGapY) {
-      for (let c = 0; c < numCols; c++) {
-        const wx = winOffX + c * (winW + winGapX);
-        // Frame
-        add([rect(winW + 4, winH + 4), pos(wx - 2, wy - 2),
-             color(...dk(s.col, 28)), z(-280)]);
-        // Glass pane
-        add([rect(winW, winH), pos(wx, wy),
-             color(120, 155, 195), z(-278)]);
-        // Reflection highlight
-        add([rect(3, winH - 4), pos(wx + 2, wy + 2),
-             color(165, 200, 232), z(-276)]);
-        // Warm interior glow (bottom half)
-        add([rect(winW - 4, 6), pos(wx + 2, wy + winH - 8),
-             color(200, 180, 120), opacity(0.35), z(-275)]);
-      }
-    }
-
-    // ─ Sign band (large, prominent) ─
-    // Sign background
-    add([rect(s.w - 4, signH), pos(s.x + 2, signY),
-         color(...sc), z(-270)]);
-    // Sign border (top, bottom, sides)
-    add([rect(s.w - 4, 2), pos(s.x + 2, signY - 2),
-         color(...lt(sc, 65)), z(-269)]);
-    add([rect(s.w - 4, 2), pos(s.x + 2, signY + signH),
-         color(...lt(sc, 45)), z(-269)]);
-    add([rect(2, signH + 4), pos(s.x, signY - 2),
-         color(...lt(sc, 50)), z(-269)]);
-    add([rect(2, signH + 4), pos(s.x + s.w - 2, signY - 2),
-         color(...lt(sc, 50)), z(-269)]);
-
-    // Sign text (large with drop shadow for readability)
-    const fontSize = Math.min(14, Math.floor((s.w - 16) / s.label.length * 1.6));
-    const textX = s.x + 8;
-    const textY = signY + Math.floor((signH - fontSize) / 2);
-    // Shadow
-    add([text(s.label, { size: fontSize }),
-         pos(textX + 1, textY + 1), color(0, 0, 0), z(-266)]);
-    // Main text
-    add([text(s.label, { size: fontSize }),
-         pos(textX, textY), color(...stc), z(-265)]);
-
-    // ─ Awning (striped) ─
-    const awnY = signY + signH + 3;
-    add([rect(s.w - 6, awnH), pos(s.x + 3, awnY),
-         color(...ac), z(-260)]);
-    // Stripes
-    for (let sx = s.x + 3; sx < s.x + s.w - 6; sx += 12) {
-      add([rect(6, awnH), pos(sx, awnY),
-           color(...lt(ac, 28)), z(-259)]);
-    }
-    // Awning shadow below
-    add([rect(s.w - 6, 3), pos(s.x + 3, awnY + awnH),
-         color(0, 0, 0), opacity(0.12), z(-258)]);
-
-    // ─ Ground floor (storefront windows + door) ─
-    const gfTop = awnY + awnH + 3;
-    const gfH = GROUND_TOP - gfTop;
-    if (gfH > 6) {
-      // Ground floor wall (slightly lighter)
-      add([rect(s.w - 4, gfH), pos(s.x + 2, gfTop),
-           color(...lt(s.col, 15)), z(-255)]);
-
-      const doorW = 14;
-      const doorX = s.x + Math.floor(s.w / 2) - doorW / 2;
-      const sfWinW = Math.min(30, Math.floor((s.w - doorW - 28) / 2));
-
-      // Left storefront window
-      if (sfWinW > 8) {
-        add([rect(sfWinW + 2, gfH - 2), pos(s.x + 7, gfTop + 1),
-             color(...dk(s.col, 20)), z(-254)]); // frame
-        add([rect(sfWinW, gfH - 4), pos(s.x + 8, gfTop + 2),
-             color(155, 185, 145), z(-253)]); // glass
-        add([rect(sfWinW - 4, gfH - 8), pos(s.x + 10, gfTop + 4),
-             color(215, 205, 165), z(-252)]); // warm glow
-      }
-
-      // Door
-      add([rect(doorW + 2, gfH - 2), pos(doorX - 1, gfTop + 1),
-           color(...dk(s.col, 30)), z(-254)]); // frame
-      add([rect(doorW, gfH - 4), pos(doorX, gfTop + 2),
-           color(...dk(s.col, 18)), z(-253)]); // door panel
-      add([rect(2, 3), pos(doorX + doorW - 4, gfTop + Math.floor(gfH / 2)),
-           color(210, 190, 110), z(-252)]); // handle
-
-      // Right storefront window
-      if (sfWinW > 8) {
-        const rwx = s.x + s.w - sfWinW - 9;
-        add([rect(sfWinW + 2, gfH - 2), pos(rwx, gfTop + 1),
-             color(...dk(s.col, 20)), z(-254)]);
-        add([rect(sfWinW, gfH - 4), pos(rwx + 1, gfTop + 2),
-             color(155, 185, 145), z(-253)]);
-        add([rect(sfWinW - 4, gfH - 8), pos(rwx + 3, gfTop + 4),
-             color(215, 205, 165), z(-252)]);
-      }
+    let sx = 25;
+    while (sx < levelW) {
+      const sw = 30 + Math.floor(Math.random() * 25);
+      const sh = 35 + Math.floor(Math.random() * 40);
+      add([rect(sw, sh), pos(sx, GROUND_TOP - sh - 145),
+           color(...dk(lvl.skyCol, 6)), z(-299)]);
+      add([rect(3, 3), pos(sx + sw / 2, GROUND_TOP - sh - 140),
+           color(180, 170, 100), opacity(0.4), z(-298)]);
+      sx += 80 + Math.floor(Math.random() * 60);
     }
   }
 
-  } // end storefront block
+  // ── Block renderer dispatch ─────────────────────────────────────────────
+  const blocks = lvl.blocks || lvl.stores || [];
+  for (const b of blocks) {
+    const btype = b.type || "store";
+    if      (btype === "store")     _drawStore(b, dk, lt);
+    else if (btype === "crosswalk") _drawCrosswalk(b, dk, lt, lvl);
+    else if (btype === "lot")       _drawEmptyLot(b, dk, lt, lvl);
+    else if (btype === "alley")     _drawAlley(b, dk, lt, lvl);
+    else if (btype === "wall")      _drawWall(b, dk, lt, lvl);
+    else if (btype === "park")      _drawPark(b, dk, lt, lvl);
+    else if (btype === "special")   _drawSpecial(b, dk, lt, lvl);
+  }
 
   // ── Sidewalk ──────────────────────────────────────────────────────────────
-  add([rect(SCREEN_W, GROUND_BOTTOM - GROUND_TOP), pos(0, GROUND_TOP),
+  add([rect(levelW, GROUND_BOTTOM - GROUND_TOP), pos(0, GROUND_TOP),
        color(...lvl.groundCol), z(-250)]);
 
   // Slab pattern (alternating shades)
-  for (let sx = 0; sx < SCREEN_W; sx += 65) {
+  for (let sx = 0; sx < levelW; sx += 65) {
     const shade = (Math.floor(sx / 65) % 2 === 0) ? 4 : -3;
     const sc = shade > 0 ? lt(lvl.groundCol, shade) : dk(lvl.groundCol, -shade);
     add([rect(63, GROUND_BOTTOM - GROUND_TOP - 8), pos(sx + 1, GROUND_TOP + 4),
@@ -209,37 +76,47 @@ function drawLevelBackground(lvl) {
   }
 
   // Slab seam lines (vertical)
-  for (let cx = 65; cx < SCREEN_W; cx += 65) {
+  for (let cx = 65; cx < levelW; cx += 65) {
     add([rect(1, GROUND_BOTTOM - GROUND_TOP - 4), pos(cx, GROUND_TOP + 2),
          color(...dk(lvl.groundCol, 28)), z(-248)]);
   }
 
   // Horizontal seam
-  add([rect(SCREEN_W, 1),
+  add([rect(levelW, 1),
        pos(0, GROUND_TOP + Math.floor((GROUND_BOTTOM - GROUND_TOP) / 2)),
        color(...dk(lvl.groundCol, 18)), z(-248)]);
 
-  // Snow patches on sidewalk
-  for (let i = 0; i < 8; i++) {
-    add([rect(20 + Math.random() * 35, 3 + Math.random() * 5),
-         pos(Math.random() * (SCREEN_W - 50) + 5,
-             GROUND_TOP + 8 + Math.random() * (GROUND_BOTTOM - GROUND_TOP - 20)),
-         color(225, 230, 245), opacity(0.22), z(-247)]);
+  // Rain puddles on sidewalk (replaces snow patches)
+  const weather = lvl.weather || "rain";
+  if (weather === "rain" || weather === "overcast") {
+    const puddleCount = Math.ceil(PUDDLE_COUNT_PER_800 * levelW / 800);
+    for (let i = 0; i < puddleCount; i++) {
+      const pw = 18 + Math.random() * 30;
+      const ph = 2 + Math.random() * 3;
+      const px = Math.random() * (levelW - 50) + 5;
+      const py = GROUND_TOP + 8 + Math.random() * (GROUND_BOTTOM - GROUND_TOP - 20);
+      // Dark puddle
+      add([rect(pw, ph), pos(px, py),
+           color(80, 90, 110), opacity(0.18), z(-247)]);
+      // Highlight on puddle
+      add([rect(pw * 0.4, 1), pos(px + pw * 0.2, py),
+           color(160, 180, 210), opacity(0.12), z(-246.5)]);
+    }
   }
 
   // Curb
-  add([rect(SCREEN_W, 5), pos(0, GROUND_BOTTOM - 5),
+  add([rect(levelW, 5), pos(0, GROUND_BOTTOM - 5),
        color(...dk(lvl.groundCol, 35)), z(-246)]);
-  add([rect(SCREEN_W, 2), pos(0, GROUND_BOTTOM - 1),
+  add([rect(levelW, 2), pos(0, GROUND_BOTTOM - 1),
        color(25, 20, 15), z(-245)]);
 
   // ── Road ──────────────────────────────────────────────────────────────────
-  add([rect(SCREEN_W, SCREEN_H - GROUND_BOTTOM), pos(0, GROUND_BOTTOM),
+  add([rect(levelW, SCREEN_H - GROUND_BOTTOM), pos(0, GROUND_BOTTOM),
        color(42, 38, 32), z(-250)]);
 
   // Dashed centre line
   const roadMidY = GROUND_BOTTOM + Math.floor((SCREEN_H - GROUND_BOTTOM) / 2);
-  for (let lx = 12; lx < SCREEN_W; lx += 44) {
+  for (let lx = 12; lx < levelW; lx += 44) {
     add([rect(22, 2), pos(lx, roadMidY),
          color(190, 170, 45), z(-248)]);
   }
@@ -254,53 +131,291 @@ function drawLevelBackground(lvl) {
 }
 
 
+// ── Block type renderers ──────────────────────────────────────────────────
+
+function _drawStore(s, dk, lt) {
+  const wt = GROUND_TOP - (s.h || 170);
+  const sc  = s.signCol     || [200, 40, 40];
+  const stc = s.signTextCol || [255, 255, 255];
+  const ac  = s.awningCol   || dk(s.col, 10);
+
+  // Wall
+  add([rect(s.w - 2, s.h), pos(s.x + 1, wt), color(...s.col), z(-290)]);
+  // Roof ledge
+  add([rect(s.w + 2, 5), pos(s.x - 1, wt - 3), color(...dk(s.col, 35)), z(-289)]);
+  // Wet roof edge (rain streak)
+  add([rect(s.w - 4, 3), pos(s.x + 2, wt - 2), color(...dk(s.col, 18)), opacity(0.3), z(-288)]);
+  // Rain drip streaks from roof
+  let ic = s.x + 14;
+  while (ic < s.x + s.w - 10) {
+    const dripH = 2 + Math.floor(Math.random() * 4);
+    add([rect(1, dripH), pos(ic, wt), color(120, 140, 170), opacity(0.25), z(-287)]);
+    ic += 16 + Math.floor(Math.random() * 20);
+  }
+
+  // Layout
+  const gfFrac = 0.35;
+  const signH = 26;
+  const awnH = 9;
+  const signY = wt + Math.floor(s.h * (1 - gfFrac)) - signH;
+
+  // Wall panel lines
+  for (let ly = wt + 18; ly < signY - 4; ly += 20) {
+    add([rect(s.w - 6, 1), pos(s.x + 3, ly), color(...dk(s.col, 16)), z(-285)]);
+  }
+
+  // Windows
+  const winStyle = s.windowStyle || "random";
+  const winW = 16, winH = 18, winGapX = 8, winGapY = 8;
+  const winAreaTop = wt + 10;
+  const winAreaBot = signY - 6;
+  const numCols = Math.max(1, Math.floor((s.w - 22 + winGapX) / (winW + winGapX)));
+  const totalWinW = numCols * winW + (numCols - 1) * winGapX;
+  const winOffX = s.x + Math.floor((s.w - totalWinW) / 2);
+
+  for (let wy = winAreaTop; wy + winH <= winAreaBot; wy += winH + winGapY) {
+    for (let c = 0; c < numCols; c++) {
+      const wx = winOffX + c * (winW + winGapX);
+      // Frame
+      add([rect(winW + 4, winH + 4), pos(wx - 2, wy - 2), color(...dk(s.col, 28)), z(-280)]);
+      if (winStyle === "none") continue;
+      if (winStyle === "shuttered") {
+        // Closed shutters
+        add([rect(winW, winH), pos(wx, wy), color(...dk(s.col, 8)), z(-278)]);
+        add([rect(1, winH), pos(wx + winW / 2, wy), color(...dk(s.col, 22)), z(-276)]);
+      } else if (winStyle === "broken" && Math.random() < 0.3) {
+        // Broken window — dark
+        add([rect(winW, winH), pos(wx, wy), color(40, 40, 50), z(-278)]);
+      } else {
+        // Glass pane
+        add([rect(winW, winH), pos(wx, wy), color(120, 155, 195), z(-278)]);
+        // Reflection highlight
+        add([rect(3, winH - 4), pos(wx + 2, wy + 2), color(165, 200, 232), z(-276)]);
+        // Warm interior glow
+        add([rect(winW - 4, 6), pos(wx + 2, wy + winH - 8),
+             color(200, 180, 120), opacity(0.35), z(-275)]);
+      }
+    }
+  }
+
+  // Sign band
+  add([rect(s.w - 4, signH), pos(s.x + 2, signY), color(...sc), z(-270)]);
+  add([rect(s.w - 4, 2), pos(s.x + 2, signY - 2), color(...lt(sc, 65)), z(-269)]);
+  add([rect(s.w - 4, 2), pos(s.x + 2, signY + signH), color(...lt(sc, 45)), z(-269)]);
+  add([rect(2, signH + 4), pos(s.x, signY - 2), color(...lt(sc, 50)), z(-269)]);
+  add([rect(2, signH + 4), pos(s.x + s.w - 2, signY - 2), color(...lt(sc, 50)), z(-269)]);
+  const fontSize = Math.min(14, Math.floor((s.w - 16) / (s.label || "").length * 1.6));
+  const textX = s.x + 8;
+  const textY = signY + Math.floor((signH - fontSize) / 2);
+  add([text(s.label || "", { size: fontSize }), pos(textX + 1, textY + 1), color(0, 0, 0), z(-266)]);
+  add([text(s.label || "", { size: fontSize }), pos(textX, textY), color(...stc), z(-265)]);
+
+  // Awning
+  const awnY = signY + signH + 3;
+  add([rect(s.w - 6, awnH), pos(s.x + 3, awnY), color(...ac), z(-260)]);
+  for (let sx = s.x + 3; sx < s.x + s.w - 6; sx += 12) {
+    add([rect(6, awnH), pos(sx, awnY), color(...lt(ac, 28)), z(-259)]);
+  }
+  add([rect(s.w - 6, 3), pos(s.x + 3, awnY + awnH), color(0, 0, 0), opacity(0.12), z(-258)]);
+
+  // Ground floor
+  const gfTop = awnY + awnH + 3;
+  const gfH = GROUND_TOP - gfTop;
+  if (gfH > 6) {
+    add([rect(s.w - 4, gfH), pos(s.x + 2, gfTop), color(...lt(s.col, 15)), z(-255)]);
+    const doorW = 14;
+    const doorX = s.x + Math.floor(s.w / 2) - doorW / 2;
+    const sfWinW = Math.min(30, Math.floor((s.w - doorW - 28) / 2));
+    if (sfWinW > 8) {
+      add([rect(sfWinW + 2, gfH - 2), pos(s.x + 7, gfTop + 1), color(...dk(s.col, 20)), z(-254)]);
+      add([rect(sfWinW, gfH - 4), pos(s.x + 8, gfTop + 2), color(155, 185, 145), z(-253)]);
+      add([rect(sfWinW - 4, gfH - 8), pos(s.x + 10, gfTop + 4), color(215, 205, 165), z(-252)]);
+    }
+    add([rect(doorW + 2, gfH - 2), pos(doorX - 1, gfTop + 1), color(...dk(s.col, 30)), z(-254)]);
+    add([rect(doorW, gfH - 4), pos(doorX, gfTop + 2), color(...dk(s.col, 18)), z(-253)]);
+    add([rect(2, 3), pos(doorX + doorW - 4, gfTop + Math.floor(gfH / 2)), color(210, 190, 110), z(-252)]);
+    if (sfWinW > 8) {
+      const rwx = s.x + s.w - sfWinW - 9;
+      add([rect(sfWinW + 2, gfH - 2), pos(rwx, gfTop + 1), color(...dk(s.col, 20)), z(-254)]);
+      add([rect(sfWinW, gfH - 4), pos(rwx + 1, gfTop + 2), color(155, 185, 145), z(-253)]);
+      add([rect(sfWinW - 4, gfH - 8), pos(rwx + 3, gfTop + 4), color(215, 205, 165), z(-252)]);
+    }
+  }
+}
+
+function _drawCrosswalk(b, dk, lt, lvl) {
+  // White zebra stripes on the sidewalk — no building above
+  const stripeW = 8;
+  const gap = 6;
+  const bandH = GROUND_BOTTOM - GROUND_TOP;
+  for (let sx = b.x + 4; sx < b.x + b.w - stripeW; sx += stripeW + gap) {
+    add([rect(stripeW, bandH - 8), pos(sx, GROUND_TOP + 4),
+         color(235, 235, 230), opacity(0.55), z(-247)]);
+  }
+}
+
+function _drawEmptyLot(b, dk, lt, lvl) {
+  const h = b.h || 150;
+  const wt = GROUND_TOP - h;
+  // Background (dirt/rubble)
+  add([rect(b.w, h), pos(b.x, wt), color(110, 100, 85), z(-290)]);
+  // Chain-link fence top rail
+  add([rect(b.w, 3), pos(b.x, wt), color(140, 140, 140), z(-286)]);
+  // Fence posts
+  for (let fx = b.x + 10; fx < b.x + b.w; fx += 25) {
+    add([rect(2, h), pos(fx, wt), color(130, 130, 130), z(-287)]);
+  }
+  // Diamond pattern (simplified as X lines)
+  for (let fy = wt + 12; fy < GROUND_TOP - 10; fy += 14) {
+    add([rect(b.w - 4, 1), pos(b.x + 2, fy), color(145, 145, 145), opacity(0.3), z(-285)]);
+  }
+  // Weed tufts at base
+  for (let wx = b.x + 8; wx < b.x + b.w - 8; wx += 15 + Math.floor(Math.random() * 10)) {
+    const wh = 4 + Math.floor(Math.random() * 6);
+    add([rect(3, wh), pos(wx, GROUND_TOP - wh), color(60, 100, 40), z(-284)]);
+  }
+}
+
+function _drawAlley(b, dk, lt, lvl) {
+  const h = 180;
+  const wt = GROUND_TOP - h;
+  // Dark gap
+  add([rect(b.w, h), pos(b.x, wt), color(20, 18, 15), z(-292)]);
+  // Dumpster
+  const dw = Math.min(b.w - 4, 18);
+  add([rect(dw, 14), pos(b.x + (b.w - dw) / 2, GROUND_TOP - 14),
+       color(50, 70, 50), z(-283)]);
+}
+
+function _drawWall(b, dk, lt, lvl) {
+  const h = b.h || 180;
+  const wt = GROUND_TOP - h;
+  const wc = b.col || [140, 130, 120];
+  add([rect(b.w, h), pos(b.x, wt), color(...wc), z(-290)]);
+  // Roof ledge
+  add([rect(b.w + 2, 4), pos(b.x - 1, wt - 2), color(...dk(wc, 30)), z(-289)]);
+  if (b.mural) {
+    // Graffiti patches — random coloured rects
+    for (let i = 0; i < 3; i++) {
+      const gx = b.x + 5 + Math.random() * (b.w - 30);
+      const gy = wt + 20 + Math.random() * (h - 60);
+      const gw = 15 + Math.random() * 20;
+      const gh = 10 + Math.random() * 15;
+      const gc = [
+        80 + Math.floor(Math.random() * 175),
+        50 + Math.floor(Math.random() * 175),
+        80 + Math.floor(Math.random() * 175),
+      ];
+      add([rect(gw, gh), pos(gx, gy), color(...gc), opacity(0.6), z(-288)]);
+    }
+  }
+}
+
+function _drawPark(b, dk, lt, lvl) {
+  const h = 100;
+  const wt = GROUND_TOP - h;
+  // Grass area
+  add([rect(b.w, h), pos(b.x, wt), color(55, 110, 50), z(-291)]);
+  // Tree trunk
+  const treeX = b.x + b.w / 2;
+  add([rect(6, 35), pos(treeX - 3, wt + 15), color(90, 60, 30), z(-288)]);
+  // Tree canopy
+  add([rect(30, 22), pos(treeX - 15, wt + 2), color(40, 95, 35), z(-287)]);
+  add([rect(22, 16), pos(treeX - 11, wt - 6), color(50, 105, 40), z(-286)]);
+  // Bench
+  if (b.w > 50) {
+    const benchX = b.x + b.w * 0.7;
+    add([rect(20, 3), pos(benchX, GROUND_TOP - 18), color(100, 70, 40), z(-284)]);
+    add([rect(2, 12), pos(benchX, GROUND_TOP - 16), color(80, 55, 30), z(-285)]);
+    add([rect(2, 12), pos(benchX + 18, GROUND_TOP - 16), color(80, 55, 30), z(-285)]);
+  }
+}
+
+function _drawSpecial(b, dk, lt, lvl) {
+  const st = b.specialType || "bus_stop";
+  const h = b.h || 120;
+  const wt = GROUND_TOP - h;
+
+  if (st === "bus_stop") {
+    // Shelter roof
+    add([rect(b.w - 4, 4), pos(b.x + 2, wt + 10), color(80, 85, 95), z(-288)]);
+    // Pole
+    add([rect(3, h - 12), pos(b.x + 6, wt + 14), color(100, 100, 100), z(-289)]);
+    add([rect(3, h - 12), pos(b.x + b.w - 9, wt + 14), color(100, 100, 100), z(-289)]);
+    // Sign
+    add([rect(14, 18), pos(b.x + b.w / 2 - 7, wt + 18), color(40, 80, 160), z(-287)]);
+    add([text("BUS", { size: 6 }), pos(b.x + b.w / 2 - 5, wt + 22), color(255, 255, 255), z(-286)]);
+    // Glass panel (back wall)
+    add([rect(b.w - 14, h - 20), pos(b.x + 7, wt + 14), color(140, 170, 200), opacity(0.2), z(-290)]);
+  } else if (st === "monument") {
+    // Stone plinth + obelisk
+    add([rect(b.w * 0.6, 20), pos(b.x + b.w * 0.2, GROUND_TOP - 20), color(160, 155, 145), z(-288)]);
+    add([rect(b.w * 0.3, h - 20), pos(b.x + b.w * 0.35, wt), color(150, 145, 135), z(-287)]);
+  } else if (st === "fountain") {
+    // Basin
+    add([rect(b.w - 10, 16), pos(b.x + 5, GROUND_TOP - 16), color(130, 140, 150), z(-288)]);
+    // Centre column
+    add([rect(6, h * 0.5), pos(b.x + b.w / 2 - 3, wt + h * 0.3), color(140, 140, 140), z(-287)]);
+    // Water
+    add([rect(b.w - 16, 10), pos(b.x + 8, GROUND_TOP - 14), color(100, 140, 180), opacity(0.35), z(-286)]);
+  }
+}
+
+
 // =============================================================================
-// SNOW PARTICLE SYSTEM
+// WEATHER PARTICLE SYSTEM
 // =============================================================================
 
-let _snowParticles = [];
+let _weatherParticles = [];
+let _weatherType = "rain";  // "rain", "clear", "overcast"
 
 /**
- * Initialise the snow particle pool.  Call once at scene start.
- * @param {number} count — number of snowflakes (default 55)
+ * Initialise the weather particle pool.  Call once at scene start.
+ * @param {string} type  — "rain", "clear", or "overcast"
+ * @param {number} count — number of particles (default uses RAIN_DENSITY)
  */
-function initSnow(count = 55) {
-  _snowParticles = [];
+function initWeather(type = "rain", count) {
+  _weatherType = type;
+  _weatherParticles = [];
+  if (type === "clear") return;  // no particles for clear weather
+
+  const density = count || RAIN_DENSITY;
   const sw = typeof VIEW_W !== "undefined" ? VIEW_W : SCREEN_W;
   const sh = typeof VIEW_H !== "undefined" ? VIEW_H : SCREEN_H;
-  for (let i = 0; i < count; i++) {
-    _snowParticles.push({
+  for (let i = 0; i < density; i++) {
+    _weatherParticles.push({
       x:     rand(0, sw),
       y:     rand(0, sh),
-      speed: rand(28, 85),
-      drift: rand(-18, 18),
-      size:  rand(1, 3),
-      alpha: rand(0.25, 0.85),
+      speed: rand(RAIN_SPEED * 0.7, RAIN_SPEED * 1.2),
+      len:   rand(4, 10),       // raindrop streak length
+      alpha: rand(0.12, 0.35),
     });
   }
 }
 
-/** Advance snow physics.  Call in onUpdate(). */
-function updateSnow() {
+/** Advance weather physics.  Call in onUpdate(). */
+function updateWeather() {
+  if (_weatherType === "clear" || _weatherParticles.length === 0) return;
   const sw = typeof VIEW_W !== "undefined" ? VIEW_W : SCREEN_W;
   const sh = typeof VIEW_H !== "undefined" ? VIEW_H : SCREEN_H;
-  for (const p of _snowParticles) {
+  for (const p of _weatherParticles) {
     p.y += p.speed * dt();
-    p.x += p.drift * dt();
-    if (p.y > sh + 4) { p.y = -4;    p.x = rand(0, sw); }
-    if (p.x < -4)     { p.x = sw + 4; }
-    if (p.x > sw + 4) { p.x = -4;     }
+    p.x += Math.tan(RAIN_ANGLE) * p.speed * dt();  // diagonal slant
+    if (p.y > sh + 4) { p.y = -p.len; p.x = rand(0, sw); }
+    if (p.x > sw + 4) { p.x = -4; }
   }
 }
 
-/** Render all snowflakes.  Call in onDraw(). */
-function drawSnow() {
-  for (const p of _snowParticles) {
+/** Render weather particles.  Call in onDraw(). */
+function drawWeather() {
+  if (_weatherType === "clear" || _weatherParticles.length === 0) return;
+  for (const p of _weatherParticles) {
+    // Thin angled streak for rain
     drawRect({
       pos:     vec2(p.x, p.y),
-      width:   p.size,
-      height:  p.size,
-      color:   rgb(215, 228, 255),
+      width:   1,
+      height:  p.len,
+      color:   rgb(160, 180, 210),
       opacity: p.alpha,
     });
   }
@@ -350,7 +465,8 @@ function showSpeechBubble(msg, entityOrX, yOrDuration, maybeDuration) {
       lastX = entity.pos.x;
       lastY = entity.pos.y;
     }
-    const bx = clamp(lastX - W / 2, 4, SCREEN_W - W - 4);
+    const lvlW = window._currentLevelWidth || SCREEN_W;
+    const bx = clamp(lastX - W / 2, 4, lvlW - W - 4);
     let by = lastY - 72;
 
     // Push bubble up if it overlaps any other active bubble
@@ -477,7 +593,7 @@ function spawnPlayer(idx) {
  * Update player movement each frame.  Attack & hurt-lock respected.
  * Call from onUpdate() in game scene.
  */
-function updatePlayerMovement(p) {
+function updatePlayerMovement(p, bounds) {
   const cfg = p.cfg;
 
   p.attackTimer     = Math.max(0, p.attackTimer     - dt());
@@ -522,8 +638,10 @@ function updatePlayerMovement(p) {
     p.state = "idle";
   }
 
-  // Hard clamp to playfield
-  p.pos.x = clamp(p.pos.x, 20, SCREEN_W - 20);
+  // Hard clamp to playfield (bounds from section state machine)
+  const bLeft  = bounds ? bounds.left  : 20;
+  const bRight = bounds ? bounds.right : SCREEN_W - 20;
+  p.pos.x = clamp(p.pos.x, bLeft, bRight);
   p.pos.y = clamp(p.pos.y, GROUND_TOP + 24, GROUND_BOTTOM);
 
   // Depth sort — z = feet y so characters lower on screen draw in front
@@ -575,7 +693,7 @@ function spawnEnemy(type, x, y) {
  * @param {KAPLAYObj} target   — current target player
  * @param {function}  onAttack — callback(damage) when enemy deals a hit
  */
-function updateEnemy(e, target, onAttack) {
+function updateEnemy(e, target, onAttack, bounds) {
   e.hurtTimer      = Math.max(0, e.hurtTimer      - dt());
   e.attackCooldown = Math.max(0, e.attackCooldown - dt());
   e.tauntCooldown  = Math.max(0, e.tauntCooldown  - dt());
@@ -626,7 +744,9 @@ function updateEnemy(e, target, onAttack) {
     // Walk toward target
     e.pos.x += (dx / dist) * e.def.speed * dt();
     e.pos.y += (dy / dist) * e.def.speed * dt();
-    e.pos.x  = clamp(e.pos.x, 20, SCREEN_W - 20);
+    const eLeft  = bounds ? bounds.left  : 20;
+    const eRight = bounds ? bounds.right : SCREEN_W - 20;
+    e.pos.x  = clamp(e.pos.x, eLeft, eRight);
     e.pos.y  = clamp(e.pos.y, GROUND_TOP + 24, GROUND_BOTTOM);
   }
 
@@ -697,7 +817,7 @@ function spawnPet(type, x, y) {
  * @param {KAPLAYObj[]} players — all player objects
  * @param {KAPLAYObj[]} enemies — all enemy objects
  */
-function updateNPC(n, players, enemies) {
+function updateNPC(n, players, enemies, bounds) {
   n.walkTimer      = Math.max(0, n.walkTimer      - dt());
   n.reactCooldown  = Math.max(0, n.reactCooldown  - dt());
 
@@ -713,6 +833,9 @@ function updateNPC(n, players, enemies) {
     n.state  = "flee";
     n.facing = n.pos.x < dangerEnemy.pos.x ? -1 : 1;
     n.pos.x += n.facing * n.def.speed * 1.9 * dt();
+    const fleeLeft  = bounds ? bounds.left  : 20;
+    const fleeRight = bounds ? bounds.right : (window._currentLevelWidth || SCREEN_W) - 20;
+    n.pos.x = Math.max(fleeLeft, Math.min(fleeRight, n.pos.x));
   } else if (n.state === "flee") {
     n.state = "walk";
   }
@@ -739,7 +862,9 @@ function updateNPC(n, players, enemies) {
     }
     if (n.dir !== 0) n.facing = n.dir;
     n.pos.x += n.dir * n.def.speed * dt();
-    n.pos.x  = clamp(n.pos.x, 20, SCREEN_W - 20);
+    const nLeft  = bounds ? bounds.left  : 20;
+    const nRight = bounds ? bounds.right : (window._currentLevelWidth || SCREEN_W) - 20;
+    n.pos.x  = clamp(n.pos.x, nLeft, nRight);
   }
 
   // Sprite animation & facing

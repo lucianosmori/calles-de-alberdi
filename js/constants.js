@@ -12,6 +12,29 @@ const SCREEN_H = 400;
 const GROUND_TOP    = 260;
 const GROUND_BOTTOM = 365;
 
+// ── Belt-scroll camera ──────────────────────────────────────────────────────
+const SECTION_W          = 800;   // px — width of one scrolling section
+const CAM_DEAD_ZONE_X    = 0.40;  // fraction of VIEW_W — horizontal dead zone
+const CAM_DEAD_ZONE_Y    = 0.30;  // fraction of ground band height — vertical dead zone
+const CAM_LERP_X         = 0.07;  // horizontal smoothing (lower = smoother)
+const CAM_LERP_Y         = 0.04;  // vertical smoothing (subtle)
+const CAM_VERT_RANGE     = 20;    // max px camera shifts vertically
+const GO_ARROW_BLINK_HZ  = 3.5;   // "GO >>>" indicator flash speed
+const SECTION_WALL_MARGIN = 20;   // px inset from section edge for invisible wall
+
+// ── Dialogue system ───────────────────────────────────────────────────────────
+const DIALOGUE_CHARS_PER_SEC   = 30;   // typewriter speed (characters/sec)
+const DIALOGUE_FAST_MULTIPLIER = 3;    // speed when holding advance key
+const DIALOGUE_BOX_H           = 80;   // px — height of dialogue overlay
+const DIALOGUE_BOX_MARGIN      = 8;    // px — padding inside box
+const DIALOGUE_PORTRAIT_SIZE   = 56;   // px — portrait square (Phase B)
+
+// ── Weather ─────────────────────────────────────────────────────────────────
+const RAIN_ANGLE          = 0.18;  // radians — slight diagonal slant
+const RAIN_SPEED          = 600;   // px/sec — fall speed
+const RAIN_DENSITY        = 40;    // particles on screen at once (per VIEW_W)
+const PUDDLE_COUNT_PER_800 = 5;    // rain puddles per 800px of sidewalk
+
 // ── Player tuning ─────────────────────────────────────────────────────────────
 const PLAYER_SPEED    = 185;   // px / sec
 const PLAYER_MAX_HP   = 100;
@@ -58,9 +81,14 @@ const PLAYER_CONFIGS = [
 
 // ── Level definitions ─────────────────────────────────────────────────────────
 // Each level has:
-//   stores     — placeholder storefronts rendered as coloured rects + sign text
+//   levelWidth — total px width (default SCREEN_W for backwards compat)
+//   sections   — array of { startX, endX } defining scrolling sections
+//   blocks     — streetscape elements: stores, crosswalks, lots, alleys, etc.
+//                (falls back to `stores` for backwards compat, all treated as type:"store")
+//   weather    — "rain" (default), "clear", "overcast"
 //   npcTypes   — pool of NPC archetypes to spawn in background
 //   waves      — array of wave definitions; each wave = array of {type, count}
+//                one wave per section — boss spawns in last section after its wave
 //   boss       — { type, name, count? }
 //   pickups    — types available in this level
 //   bossIntro  — banner text when the boss spawns
@@ -71,24 +99,65 @@ const LEVELS = [
   {
     id: 1, name: "Calle Colón", subtitle: "La Comisaría",
     skyCol: [85, 130, 200], groundCol: [195, 185, 170],
-    policeStation: true,  // special background: Comisaría Central at Colón y Santa Fe
-    stores: [
-      { label: "KIOSCO", x: 0, w: 140, h: 175,
+    weather: "rain",
+    levelWidth: 2400,
+    sections: [
+      { startX: 0,    endX: 800  },
+      { startX: 800,  endX: 1600 },
+      { startX: 1600, endX: 2400 },
+    ],
+    blocks: [
+      // ── Section 1 (0–800): Comisaría block ──
+      { type: "store", label: "KIOSCO", x: 0, w: 140, h: 175,
         col: [120, 90, 50], signCol: [180, 140, 60],
         signTextCol: [255, 255, 255], awningCol: [100, 75, 35] },
-      { label: "PANADERÍA", x: 148, w: 155, h: 185,
+      { type: "store", label: "PANADERÍA", x: 148, w: 155, h: 185,
         col: [170, 130, 70], signCol: [200, 160, 80],
         signTextCol: [60, 30, 10], awningCol: [140, 105, 50] },
-      { label: "COMISARÍA CENTRAL", x: 311, w: 210, h: 210,
+      { type: "store", label: "COMISARÍA CENTRAL", x: 311, w: 210, h: 210,
         col: [160, 155, 145], signCol: [50, 60, 100],
         signTextCol: [255, 255, 255], awningCol: [80, 85, 100],
         isPoliceStation: true },
-      { label: "FERRETERÍA", x: 529, w: 135, h: 168,
+      { type: "store", label: "FERRETERÍA", x: 529, w: 135, h: 168,
         col: [90, 70, 55], signCol: [60, 45, 30],
         signTextCol: [255, 220, 140], awningCol: [70, 50, 35] },
-      { label: "ALMACÉN", x: 672, w: 128, h: 155,
+      { type: "store", label: "ALMACÉN", x: 672, w: 128, h: 155,
         col: [100, 120, 80], signCol: [70, 90, 50],
         signTextCol: [255, 255, 230], awningCol: [60, 80, 40] },
+
+      // ── Section 2 (800–1600): Residential block ──
+      { type: "crosswalk", x: 800, w: 55 },
+      { type: "store", label: "FARMACIA", x: 863, w: 145, h: 175,
+        col: [45, 130, 75], signCol: [30, 110, 55],
+        signTextCol: [255, 255, 255], awningCol: [35, 100, 50] },
+      { type: "store", label: "PELUQUERÍA", x: 1016, w: 130, h: 168,
+        col: [180, 120, 160], signCol: [160, 90, 140],
+        signTextCol: [255, 255, 255], awningCol: [140, 80, 120] },
+      { type: "lot", x: 1154, w: 90, h: 150 },
+      { type: "store", label: "DIETÉTICA", x: 1252, w: 135, h: 172,
+        col: [140, 170, 100], signCol: [110, 140, 70],
+        signTextCol: [255, 255, 240], awningCol: [100, 130, 60] },
+      { type: "alley", x: 1395, w: 35 },
+      { type: "store", label: "LOCUTORIO", x: 1438, w: 155, h: 165,
+        col: [80, 90, 130], signCol: [60, 70, 110],
+        signTextCol: [255, 255, 255], awningCol: [50, 60, 100] },
+
+      // ── Section 3 (1600–2400): Commercial block ──
+      { type: "crosswalk", x: 1600, w: 55 },
+      { type: "store", label: "LIBRERÍA", x: 1663, w: 140, h: 170,
+        col: [100, 80, 65], signCol: [80, 60, 45],
+        signTextCol: [255, 230, 200], awningCol: [70, 50, 35] },
+      { type: "wall", x: 1811, w: 75, h: 180, col: [140, 130, 120], mural: true },
+      { type: "store", label: "ROTISERÍA", x: 1894, w: 150, h: 175,
+        col: [160, 100, 50], signCol: [140, 80, 30],
+        signTextCol: [255, 240, 180], awningCol: [120, 70, 25] },
+      { type: "special", x: 2052, w: 65, h: 120, specialType: "bus_stop" },
+      { type: "store", label: "BAR EL CORDOBÉS", x: 2125, w: 155, h: 180,
+        col: [100, 60, 40], signCol: [80, 45, 25],
+        signTextCol: [255, 200, 100], awningCol: [70, 40, 20] },
+      { type: "store", label: "VERDULERÍA", x: 2288, w: 112, h: 160,
+        col: [60, 130, 50], signCol: [40, 100, 30],
+        signTextCol: [255, 255, 200], awningCol: [45, 95, 30] },
     ],
     npcTypes: ["belgrano_fan", "feminist", "peronist", "trapito"],
     waves: [
@@ -99,12 +168,23 @@ const LEVELS = [
     boss:      { type:"comisario",    name:"El Comisario" },
     pickups:   ["empanada", "mate", "fernet"],
     bossIntro: "¡EL COMISARIO bloquea la salida de la Comisaría!",
+    bossDialogue: [
+      { speaker: "El Comisario", text: "¡Acá mando yo, pendejo!", col: [40, 50, 80], isBoss: true, voice: "boss_low" },
+      { speaker: "El Comisario", text: "¡A la comisaría vas a ir!", col: [40, 50, 80], isBoss: true, voice: "boss_low" },
+    ],
   },
 
-  // ── Level 2 — Placeholder ────────────────────────────────────────────────
+  // ── Level 2 — Barrio Alberdi ──────────────────────────────────────────────
   {
     id: 2, name: "Barrio Alberdi", subtitle: "El Barrio",
     skyCol: [70, 100, 160], groundCol: [185, 178, 165],
+    weather: "overcast",
+    levelWidth: 2400,
+    sections: [
+      { startX: 0,    endX: 800  },
+      { startX: 800,  endX: 1600 },
+      { startX: 1600, endX: 2400 },
+    ],
     stores: [
       { label: "ALMACÉN DON PEPE", x: 0, w: 160, h: 180,
         col: [130, 100, 60], signCol: [160, 120, 40],
@@ -131,12 +211,24 @@ const LEVELS = [
     boss:      { type:"barra_brava",   name:"El Barra Brava" },
     pickups:   ["empanada", "mate", "choripan"],
     bossIntro: "¡EL BARRA BRAVA baja de la tribuna!",
+    bossDialogue: [
+      { speaker: "El Barra Brava", text: "¡Belgrano no pierde, hermano!", col: [50, 120, 180], isBoss: true, voice: "boss_mid" },
+      { speaker: "El Barra Brava", text: "¡Te rompo todo, gil!", col: [50, 120, 180], isBoss: true, voice: "boss_mid" },
+    ],
   },
 
-  // ── Level 3 — Placeholder ────────────────────────────────────────────────
+  // ── Level 3 — La Cañada ──────────────────────────────────────────────────
   {
     id: 3, name: "La Cañada", subtitle: "El Paseo",
     skyCol: [95, 145, 210], groundCol: [200, 195, 180],
+    weather: "rain",
+    levelWidth: 3200,
+    sections: [
+      { startX: 0,    endX: 800  },
+      { startX: 800,  endX: 1600 },
+      { startX: 1600, endX: 2400 },
+      { startX: 2400, endX: 3200 },
+    ],
     stores: [
       { label: "HELADERÍA", x: 0, w: 150, h: 170,
         col: [200, 180, 220], signCol: [180, 140, 200],
@@ -158,17 +250,30 @@ const LEVELS = [
     waves: [
       [{ type:"patotero",  count:3 }],
       [{ type:"patotero",  count:2 }, { type:"naranjita", count:2 }],
+      [{ type:"punguista", count:2 }, { type:"patotero",  count:2 }, { type:"naranjita", count:1 }],
       [{ type:"punguista", count:2 }, { type:"patotero",  count:2 }, { type:"naranjita", count:2 }],
     ],
     boss:      { type:"puntero",   name:"El Puntero" },
     pickups:   ["empanada", "choripan", "fernet"],
     bossIntro: "¡EL PUNTERO corta el paso en La Cañada!",
+    bossDialogue: [
+      { speaker: "El Puntero", text: "¡Yo te consigo laburo, votame!", col: [120, 80, 40], isBoss: true, voice: "boss_mid" },
+      { speaker: "El Puntero", text: "¡La calle es mía, rajá de acá!", col: [120, 80, 40], isBoss: true, voice: "boss_mid" },
+    ],
   },
 
-  // ── Level 4 — Placeholder ────────────────────────────────────────────────
+  // ── Level 4 — Centro ─────────────────────────────────────────────────────
   {
     id: 4, name: "Centro", subtitle: "La Final",
     skyCol: [55, 80, 140], groundCol: [210, 205, 195],
+    weather: "rain",
+    levelWidth: 3200,
+    sections: [
+      { startX: 0,    endX: 800  },
+      { startX: 800,  endX: 1600 },
+      { startX: 1600, endX: 2400 },
+      { startX: 2400, endX: 3200 },
+    ],
     stores: [
       { label: "CATEDRAL", x: 0, w: 180, h: 210,
         col: [170, 160, 140], signCol: [140, 130, 110],
@@ -187,11 +292,16 @@ const LEVELS = [
     waves: [
       [{ type:"patotero",  count:3 }, { type:"punguista", count:2 }],
       [{ type:"patotero",  count:2 }, { type:"naranjita",  count:2 }, { type:"punguista", count:2 }],
+      [{ type:"patotero",  count:3 }, { type:"naranjita",  count:2 }, { type:"punguista", count:2 }],
       [{ type:"patotero",  count:3 }, { type:"naranjita",  count:3 }, { type:"punguista", count:2 }],
     ],
     boss:      { type:"intendente",   name:"El Intendente" },
     pickups:   ["empanada", "mate", "fernet", "choripan"],
     bossIntro: "¡EL INTENDENTE sale del Palacio Municipal!",
+    bossDialogue: [
+      { speaker: "El Intendente", text: "¡Córdoba es mía, no me van a voltear!", col: [30, 30, 60], isBoss: true, voice: "boss_low" },
+      { speaker: "El Intendente", text: "¡Soy intocable!", col: [30, 30, 60], isBoss: true, voice: "boss_low" },
+    ],
   },
 ];
 
