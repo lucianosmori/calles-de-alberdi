@@ -410,7 +410,7 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
       showBanner("WAVE  CLEAR!", 1.2);
       // If this is the last section before boss, auto-advance after delay
       if (waveIdx >= lvl.waves.length - 1) {
-        wait(1.8, () => beginBossSequence());
+        wait(0.8, () => beginBossSequence());
       }
       // Otherwise, player must walk into next section to trigger advanceWave
 
@@ -675,9 +675,8 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
   // ── Dialogue update ──────────────────────────────────────────────────────
   onUpdate(() => updateDialogue());
 
-  // Player movement (attack/hurt timers are ticked inside updatePlayerMovement)
+  // Player movement — allowed during dialogue (player can walk while reading)
   onUpdate(() => {
-    if (isDialogueActive()) return;
     const bounds = getSectionBounds();
     for (const p of players) {
       if (p.hp <= 0) continue;
