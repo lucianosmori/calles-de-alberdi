@@ -191,19 +191,19 @@ function drawDialogue() {
     });
   }
 
-  // ── Dark box background ──────────────────────────────────────────────────
+  // ── Dark box background (slightly oversized to prevent sub-pixel edge gaps)
   drawRect({
-    pos:    vec2(0, boxY),
-    width:  VIEW_W,
-    height: boxH,
+    pos:    vec2(-4, boxY),
+    width:  VIEW_W + 8,
+    height: boxH + 4,
     color:  rgb(10, 10, 18),
     opacity: 0.90,
   });
 
   // Top accent border
   drawRect({
-    pos:    vec2(0, boxY),
-    width:  VIEW_W,
+    pos:    vec2(-4, boxY),
+    width:  VIEW_W + 8,
     height: 2,
     color:  accentCol,
     opacity: 0.9,
