@@ -282,6 +282,7 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
   let waveIdx     = -1;   // current wave (incremented by advanceWave)
   let bossObjs    = [];   // boss game object(s) for current encounter
   let phase       = "wave"; // "wave" | "bossIntro" | "boss" | "levelClear"
+  let pendingSpawns = 0;   // enemies scheduled but not yet spawned
 
   // ── Score & combo tracking ────────────────────────────────────────────────
   let score       = carriedScore;
@@ -353,10 +354,11 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
     let delay = 0.5;
     for (const group of waveDef) {
       for (let i = 0; i < group.count; i++) {
+        pendingSpawns++;
         wait(delay, () => {
+          pendingSpawns--;
           if (phase !== "wave") return;
           const y = rand(GROUND_TOP + 30, GROUND_BOTTOM - 10);
-          // Spawn from right side of section (70%) or left side (30%)
           const fromRight = Math.random() > 0.3;
           const x = fromRight
             ? section.endX + rand(20, 60)
@@ -401,7 +403,7 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
   }
 
   function checkWaveCleared() {
-    if (enemies.length > 0) return;
+    if (enemies.length > 0 || pendingSpawns > 0) return;
 
     if (phase === "wave") {
       // Section cleared — open the wall so player can walk forward
@@ -598,13 +600,14 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
   let debugGodMode  = false;
   let debugAutoWalk = false;
 
-  function debugSkipWave() { [...enemies].forEach(e => killEnemy(e)); }
+  function debugSkipWave() { pendingSpawns = 0; [...enemies].forEach(e => killEnemy(e)); }
   function debugSkipLevel() {
     const next = levelIdx + 1;
     if (next < LEVELS.length) go("game", { numPlayers, levelIdx: next });
   }
   function debugSkipToBoss() {
     // Set state BEFORE killing enemies (killEnemy triggers checkWaveCleared)
+    pendingSpawns = 0;
     waveIdx = lvl.waves.length;  // past all waves so checkWaveCleared won't re-trigger
     currentSection = sections.length - 1;
     sectionWallX = sections[currentSection].endX - SECTION_WALL_MARGIN;
