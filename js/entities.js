@@ -876,6 +876,11 @@ function updateNPC(n, players, enemies, bounds) {
     if (moving && n.curAnim() !== "walk") n.play("walk");
   }
 
+  // Keep NPC above dialogue box when dialogue is active
+  const npcYBottom = (typeof isDialogueActive === "function" && isDialogueActive())
+    ? GROUND_BOTTOM - 60 : GROUND_BOTTOM;
+  n.pos.y = clamp(n.pos.y, GROUND_TOP + 24, npcYBottom);
+
   n.z = n.pos.y;  // depth sort
 }
 

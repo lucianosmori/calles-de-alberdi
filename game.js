@@ -356,7 +356,7 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
       for (let i = 0; i < group.count; i++) {
         pendingSpawns++;
         wait(delay, () => {
-          pendingSpawns--;
+          pendingSpawns = Math.max(0, pendingSpawns - 1);
           if (phase !== "wave") return;
           const y = rand(GROUND_TOP + 30, GROUND_BOTTOM - 10);
           const fromRight = Math.random() > 0.3;
@@ -388,7 +388,10 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
       bossList.forEach((b, i) => {
         const bossY = lerp(GROUND_TOP + 30, GROUND_BOTTOM - 10, (i + 1) / (bossList.length + 1));
         const bossSection = sections[currentSection];
-        const boss  = spawnEnemy(b.type, bossSection.endX - 60 - i * 55, bossY);
+        // Spawn boss just off-screen to the right of the lead player (not at far section edge)
+        const leadX = Math.max(...players.filter(p => p.hp > 0).map(p => p.pos.x));
+        const bossX = clamp(leadX + 250 + i * 55, bossSection.startX + 100, bossSection.endX - 20);
+        const boss  = spawnEnemy(b.type, bossX, bossY);
         enemies.push(boss);
         bossObjs.push(boss);
       });
@@ -622,7 +625,7 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
 
   onKeyPress("}", debugSkipWave);
   onKeyPress("-", debugSkipLevel);
-  onKeyPress("b", () => { if (!isDialogueActive()) debugSkipToBoss(); });
+  onKeyPress("b", () => { if (!isDialogueActive() && phase !== "bossIntro" && phase !== "boss") debugSkipToBoss(); });
   onKeyPress("g", () => { debugGodMode = !debugGodMode; console.log("[DEBUG] God mode", debugGodMode ? "ON" : "OFF"); });
   onKeyPress("t", () => { debugAutoWalk = !debugAutoWalk; console.log("[DEBUG] Auto-walk", debugAutoWalk ? "ON" : "OFF"); });
   onKeyPress("z", () => { if (isKeyDown("tab")) debugSkipWave(); });   // BACK+PUNCH
