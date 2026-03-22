@@ -95,19 +95,24 @@
     /* START / BACK pills */
     .pill-btn {
       position: absolute;
-      padding: 6px 18px;
+      min-width: 60px;
+      height: 28px;
+      padding: 6px 14px;
       border-radius: 14px;
       font-size: 11px;
       font-weight: bold;
       color: #fff;
       pointer-events: auto;
       -webkit-tap-highlight-color: transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     .pill-btn:active { filter: brightness(1.5); }
     #btn-start { background: rgba(80,200,80,0.35); border: 2px solid rgba(80,200,80,0.6);
-                 right: 12px; top: 12px; }
+                 top: auto; bottom: 120px; left: 50%; transform: translateX(-50%); }
     #btn-back  { background: rgba(160,160,160,0.25); border: 2px solid rgba(160,160,160,0.5);
-                 left: 12px; top: 12px; }
+                 top: auto; bottom: 8px; left: 50%; transform: translateX(-50%); }
 
     /* QR Code overlay */
     #qr-overlay {
@@ -167,9 +172,13 @@
   <!-- QR Code generator (lightweight, no deps) -->
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 
+  <!-- Local dev config (optional — gitignored, see supabase/README.md) -->
+  <script src="env-config.js" onerror="/* not found = using /api/config instead */"></script>
+
   <!-- Game code (load order matters) -->
   <script src="js/constants.js"></script>
   <script src="js/entities.js"></script>
+  <script src="js/dialogue.js"></script>
   <script src="js/multiplayer.js"></script>
   <script src="game.js"></script>
 
