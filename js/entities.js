@@ -652,6 +652,110 @@ function updatePlayerMovement(p, bounds) {
 
 
 // =============================================================================
+// BOT COMPANION AI
+// =============================================================================
+
+/**
+ * AI brain for the bot companion (Player 2 controlled by computer).
+ * Call each frame from onUpdate. The bot uses the same player object as a
+ * human P2 — it just sets position and triggers attacks directly.
+ *
+ * @param {KAPLAYObj} bot — player game object with isBot=true
+ * @param {Array} enemies — live enemy array from game scene
+ * @param {Array} players — all players (bot finds P1 as players[0])
+ * @param {object} bounds — { left, right } from getSectionBounds()
+ * @param {Function} doAttack — attack function from game.js closure
+ */
+function updateBotPlayer(bot, enemies, players, bounds, doAttack) {
+  if (!bot || !bot.exists() || bot.hp <= 0) return;
+
+  // Tick timers (movement is handled here, not by keyboard input)
+  bot.attackTimer     = Math.max(0, bot.attackTimer     - dt());
+  bot.hurtTimer       = Math.max(0, bot.hurtTimer       - dt());
+  bot.specialCooldown = Math.max(0, bot.specialCooldown - dt());
+  if (bot.botAttackCD > 0) bot.botAttackCD -= dt();
+
+  // Color tint (same as updatePlayerMovement)
+  if (bot.hurtTimer > 0) {
+    bot.color = rgb(...bot.cfg.hurtCol);
+  } else {
+    bot.color = bot.cfg.sprite ? rgb(255, 255, 255) : rgb(...bot.cfg.col);
+  }
+  if (bot.cfg.sprite) bot.flipX = (bot.facing < 0);
+  if (bot.cfg.sprite && bot.state !== bot._lastState) {
+    bot.play(bot.state);
+    bot._lastState = bot.state;
+  }
+
+  // Locked during attack or hurt
+  if (bot.attackTimer > 0 || bot.hurtTimer > 0) { bot.z = bot.pos.y; return; }
+
+  // Find nearest living enemy
+  const livingEnemies = enemies.filter(e => e.hp > 0 && e.state !== "dead");
+  let target = null, bestDist = Infinity;
+
+  for (const e of livingEnemies) {
+    const d = bot.pos.dist(e.pos);
+    if (d < bestDist) { bestDist = d; target = e; }
+  }
+
+  let dx = 0, dy = 0;
+
+  if (target && bestDist <= 300) {
+    // Chase enemy
+    dx = target.pos.x - bot.pos.x;
+    dy = target.pos.y - bot.pos.y;
+
+    if (bestDist > BOT_ATTACK_RANGE) {
+      // Move toward enemy
+      const len = Math.sqrt(dx * dx + dy * dy) || 1;
+      bot.pos.x += (dx / len) * BOT_MOVE_SPEED * dt();
+      bot.pos.y += (dy / len) * BOT_MOVE_SPEED * 0.5 * dt();
+      bot.state = "walk";
+    } else {
+      bot.state = "idle";
+    }
+
+    // Face enemy
+    if (dx !== 0) bot.facing = dx > 0 ? 1 : -1;
+
+    // Attack when in range
+    if (bestDist <= BOT_ATTACK_RANGE && bot.botAttackCD <= 0 && bot.attackTimer <= 0) {
+      const type = Math.random() < 0.6 ? "punch" : "kick";
+      doAttack(bot, type);
+      bot.botAttackCD = BOT_ATTACK_COOLDOWN + Math.random() * 0.3;
+    }
+  } else {
+    // No nearby enemies — follow P1
+    const p1 = players[0];
+    if (p1 && p1.exists() && p1.hp > 0) {
+      dx = p1.pos.x - bot.pos.x;
+      dy = p1.pos.y - bot.pos.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > BOT_FOLLOW_DIST) {
+        const len = dist || 1;
+        bot.pos.x += (dx / len) * BOT_MOVE_SPEED * dt();
+        bot.pos.y += (dy / len) * BOT_MOVE_SPEED * 0.5 * dt();
+        bot.state = "walk";
+      } else {
+        bot.state = "idle";
+      }
+      if (dx !== 0) bot.facing = dx > 0 ? 1 : -1;
+    } else {
+      bot.state = "idle";
+    }
+  }
+
+  // Hard clamp to playfield
+  const bLeft  = bounds ? bounds.left  : 20;
+  const bRight = bounds ? bounds.right : SCREEN_W - 20;
+  bot.pos.x = clamp(bot.pos.x, bLeft, bRight);
+  bot.pos.y = clamp(bot.pos.y, GROUND_TOP + 24, GROUND_BOTTOM);
+  bot.z = bot.pos.y;
+}
+
+
+// =============================================================================
 // ENEMY FACTORY & AI
 // =============================================================================
 

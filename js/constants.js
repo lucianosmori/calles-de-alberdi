@@ -14,9 +14,9 @@ const GROUND_BOTTOM = 365;
 
 // ── Belt-scroll camera ──────────────────────────────────────────────────────
 const SECTION_W          = 800;   // px — width of one scrolling section
-const CAM_DEAD_ZONE_X    = 0.40;  // fraction of VIEW_W — horizontal dead zone
+const CAM_DEAD_ZONE_X    = 0.15;  // fraction of VIEW_W — tight zone keeps player centered
 const CAM_DEAD_ZONE_Y    = 0.30;  // fraction of ground band height — vertical dead zone
-const CAM_LERP_X         = 0.07;  // horizontal smoothing (lower = smoother)
+const CAM_LERP_X         = 0.12;  // horizontal smoothing — snappy follow
 const CAM_LERP_Y         = 0.04;  // vertical smoothing (subtle)
 const CAM_VERT_RANGE     = 20;    // max px camera shifts vertically
 const GO_ARROW_BLINK_HZ  = 3.5;   // "GO >>>" indicator flash speed
@@ -51,6 +51,12 @@ const ATTACKS = {
   punch:   { range: 68,  width: 32, damage: 12, fxColor: [255, 230, 80]  },
   kick:    { range: 90,  width: 42, damage: 22, fxColor: [255, 130, 40]  },
 };
+
+// ── Bot companion AI ────────────────────────────────────────────────────────
+const BOT_MOVE_SPEED      = 160;   // px/sec — slightly slower than player (185)
+const BOT_ATTACK_RANGE    = 55;    // px — distance to start attacking
+const BOT_ATTACK_COOLDOWN = 0.7;   // sec — minimum between attacks
+const BOT_FOLLOW_DIST     = 50;    // px — how close bot follows P1 when idle
 
 // ── Scoring ─────────────────────────────────────────────────────────────────
 const SCORE_ENEMY_KILL = 100;

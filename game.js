@@ -241,14 +241,43 @@ scene("title", () => {
     levelObjs.push({ cursor, label });
   });
 
-  // Controls prompt (flashing)
+  // ── Mode select state ─────────────────────────────────────────────────────
+  // 0 = 1 Jugador, 1 = 1P + Compañero IA, 2 = 2 Jugadores
+  let selectedMode = 0;
+  const MODES = [
+    { label: "1 JUGADOR",           numPlayers: 1, botEnabled: false },
+    { label: "1P + COMPAÑERO IA",   numPlayers: 2, botEnabled: true  },
+    { label: "2 JUGADORES",         numPlayers: 2, botEnabled: false },
+  ];
+
+  // Mode labels (below level list)
+  const modeStartY = listStartY + LEVELS.length * rowH + 14;
+  const modeObjs = [];
   const isMobile = window.matchMedia("(pointer: coarse)").matches;
+
+  MODES.forEach((m, i) => {
+    const y = modeStartY + i * 14;
+    const lbl = add([
+      text(m.label, { size: 10, align: "center" }),
+      pos(cx, y), anchor("center"),
+      color(140, 135, 120), fixed(), z(10),
+    ]);
+    // Touch/click hit area
+    const hit = add([
+      rect(200, 14), pos(cx - 100, y - 7), anchor("topleft"),
+      area(), color(0, 0, 0), opacity(0.01), fixed(), z(9),
+    ]);
+    hit.onClick(() => { selectedMode = i; autoStartTimer = 7; });
+    modeObjs.push(lbl);
+  });
+
+  // Controls prompt (flashing)
   const promptMsg = isMobile
     ? "[ START ]  para jugar"
-    : "[ ENTER ]  1 Jugador        [ TAB ]  2 Jugadores";
+    : "[ ENTER ]  Confirmar       [ < > ]  Modo";
   const prompt = add([
     text(promptMsg, { size: 11, align: "center", width: VIEW_W - 20 }),
-    pos(cx, listStartY + LEVELS.length * rowH + 16), anchor("center"),
+    pos(cx, modeStartY + MODES.length * 14 + 8), anchor("center"),
     color(255, 245, 120), fixed(), z(10),
   ]);
   let flashT = 0;
@@ -260,13 +289,13 @@ scene("title", () => {
   // Auto-start timer label (between prompt and leaderboard)
   const timerLabel = add([
     text("", { size: 9, align: "center" }),
-    pos(cx, listStartY + LEVELS.length * rowH + 32), anchor("center"),
+    pos(cx, modeStartY + MODES.length * 14 + 24), anchor("center"),
     color(160, 155, 130), fixed(), z(10),
   ]);
 
   // Controls legend (desktop only — mobile has gamepad)
   if (!isMobile) {
-    const legendY = listStartY + LEVELS.length * rowH + 56;
+    const legendY = modeStartY + MODES.length * 14 + 44;
     add([text("P1: WASD Move   Z Punch   X Kick   Q Special",
               { size: 8, align: "center" }),
          pos(cx, legendY), anchor("center"),
@@ -279,8 +308,8 @@ scene("title", () => {
 
   // ── Leaderboard on title ──────────────────────────────────────────────────
   const lbY = isMobile
-    ? listStartY + LEVELS.length * rowH + 52 + 14
-    : listStartY + LEVELS.length * rowH + 78;
+    ? modeStartY + MODES.length * 14 + 44
+    : modeStartY + MODES.length * 14 + 68;
   const lbText = add([
     text("", { size: 9, align: "center", width: VIEW_W - 20 }),
     pos(cx, lbY), anchor("center"),
@@ -307,13 +336,19 @@ scene("title", () => {
 
   // ── Update cursor visibility + timer each frame ────────────────────────────
   onUpdate(() => {
-    // Refresh cursor and dimming each frame
+    // Refresh level cursor and dimming each frame
     levelObjs.forEach(({ cursor, label }, i) => {
       const selected = i === selectedLevel;
       cursor.opacity = selected ? 1 : 0;
-      // Mutate the existing Color object (Kaplay doesn't support direct reassignment)
       if (selected) { label.color.r = 255; label.color.g = 215; label.color.b = 0;   }
       else          { label.color.r = 140; label.color.g = 135; label.color.b = 120; }
+    });
+
+    // Refresh mode labels
+    modeObjs.forEach((lbl, i) => {
+      const selected = i === selectedMode;
+      if (selected) { lbl.color.r = 255; lbl.color.g = 245; lbl.color.b = 120; }
+      else          { lbl.color.r = 140; lbl.color.g = 135; lbl.color.b = 120; }
     });
 
     // Auto-start countdown
@@ -321,7 +356,8 @@ scene("title", () => {
     const secs = Math.max(0, Math.ceil(autoStartTimer));
     timerLabel.text = secs > 0 ? `Starting in ${secs}...` : "";
     if (autoStartTimer <= 0) {
-      go("game", { numPlayers: 1, levelIdx: 0 });
+      const m = MODES[selectedMode];
+      go("game", { numPlayers: m.numPlayers, botEnabled: m.botEnabled, levelIdx: 0 });
     }
   });
 
@@ -330,12 +366,21 @@ scene("title", () => {
 
   const navUp   = () => { selectedLevel = Math.max(0, selectedLevel - 1);              resetTimer(); };
   const navDown = () => { selectedLevel = Math.min(LEVELS.length - 1, selectedLevel + 1); resetTimer(); };
+  const navModeLeft  = () => { selectedMode = Math.max(0, selectedMode - 1);            resetTimer(); };
+  const navModeRight = () => { selectedMode = Math.min(MODES.length - 1, selectedMode + 1); resetTimer(); };
   onKeyPress("arrowup",   navUp);
   onKeyPress("w",         navUp);
   onKeyPress("arrowdown", navDown);
   onKeyPress("s",         navDown);
-  onKeyPress("enter", () => go("game", { numPlayers: 1, levelIdx: selectedLevel }));
-  onKeyPress("tab",   () => go("game", { numPlayers: 2, levelIdx: selectedLevel }));
+  onKeyPress("arrowleft",  navModeLeft);
+  onKeyPress("a",          navModeLeft);
+  onKeyPress("arrowright", navModeRight);
+  onKeyPress("d",          navModeRight);
+  onKeyPress("tab", navModeRight);
+  onKeyPress("enter", () => {
+    const m = MODES[selectedMode];
+    go("game", { numPlayers: m.numPlayers, botEnabled: m.botEnabled, levelIdx: selectedLevel });
+  });
 });
 
 
@@ -343,7 +388,7 @@ scene("title", () => {
 // SCENE — MAIN GAME
 // =============================================================================
 
-scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
+scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabled = false }) => {
 
   const lvl = LEVELS[levelIdx];
 
@@ -398,7 +443,12 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
   for (let i = 0; i < numPlayers; i++) {
     const p = spawnPlayer(i);
     players.push(p);
-    setupPlayerAttacks(p);   // registers onKeyPress handlers (defined below)
+    if (i === 1 && botEnabled) {
+      p.isBot = true;
+      p.botAttackCD = 0;
+    } else {
+      setupPlayerAttacks(p);   // registers onKeyPress handlers (defined below)
+    }
   }
 
   // Level intro dialogue, then kick off wave 1
@@ -501,13 +551,13 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
         const next = levelIdx + 1;
         if (next < LEVELS.length) {
           Music.stop();
-          go("game", { numPlayers, levelIdx: next, score });
+          go("game", { numPlayers, levelIdx: next, score, botEnabled });
         } else {
           Music.stop();
           const playerName = numPlayers === 2
             ? PLAYER_CONFIGS[0].name + " & " + PLAYER_CONFIGS[1].name
             : PLAYER_CONFIGS[0].name;
-          go("victory", { numPlayers, score, playerName });
+          go("victory", { numPlayers, score, playerName, botEnabled });
         }
       });
     }
@@ -679,7 +729,7 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
   function debugSkipWave() { pendingSpawns = 0; [...enemies].forEach(e => killEnemy(e)); }
   function debugSkipLevel() {
     const next = levelIdx + 1;
-    if (next < LEVELS.length) go("game", { numPlayers, levelIdx: next });
+    if (next < LEVELS.length) go("game", { numPlayers, levelIdx: next, botEnabled });
   }
   function debugSkipToBoss() {
     // Set state BEFORE killing enemies (killEnemy triggers checkWaveCleared)
@@ -762,7 +812,11 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
     const bounds = getSectionBounds();
     for (const p of players) {
       if (p.hp <= 0) continue;
-      updatePlayerMovement(p, bounds);
+      if (p.isBot) {
+        updateBotPlayer(p, enemies, players, bounds, doAttack);
+      } else {
+        updatePlayerMovement(p, bounds);
+      }
     }
   });
 
@@ -845,7 +899,7 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
       const playerName = numPlayers === 2
         ? PLAYER_CONFIGS[0].name + " & " + PLAYER_CONFIGS[1].name
         : PLAYER_CONFIGS[0].name;
-      wait(0.6, () => { Music.stop(); go("gameover", { numPlayers, levelIdx, score, playerName }); });
+      wait(0.6, () => { Music.stop(); go("gameover", { numPlayers, levelIdx, score, playerName, botEnabled }); });
     }
   });
 
@@ -1025,7 +1079,7 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0 }) => {
 // SCENE — GAME OVER
 // =============================================================================
 
-scene("gameover", ({ numPlayers = 1, levelIdx = 0, score = 0, playerName = "GAUCHO" }) => {
+scene("gameover", ({ numPlayers = 1, levelIdx = 0, score = 0, playerName = "GAUCHO", botEnabled = false }) => {
   setCamScale(1); setCamPos(VIEW_W / 2, VIEW_H / 2);
 
   const lvl = LEVELS[levelIdx];
@@ -1049,7 +1103,7 @@ scene("gameover", ({ numPlayers = 1, levelIdx = 0, score = 0, playerName = "GAUC
   onUpdate(() => updateWeather());
   onDraw(() => drawWeather());
 
-  onKeyPress("enter", () => go("game", { numPlayers, levelIdx }));
+  onKeyPress("enter", () => go("game", { numPlayers, levelIdx, botEnabled }));
   onKeyPress("tab",   () => go("title"));
 });
 
@@ -1058,7 +1112,7 @@ scene("gameover", ({ numPlayers = 1, levelIdx = 0, score = 0, playerName = "GAUC
 // SCENE — VICTORY
 // =============================================================================
 
-scene("victory", ({ numPlayers = 1, score = 0, playerName = "GAUCHO" }) => {
+scene("victory", ({ numPlayers = 1, score = 0, playerName = "GAUCHO", botEnabled = false }) => {
   setCamScale(1); setCamPos(VIEW_W / 2, VIEW_H / 2);
 
   const cx = VIEW_W / 2;
@@ -1111,7 +1165,7 @@ scene("victory", ({ numPlayers = 1, score = 0, playerName = "GAUCHO" }) => {
   onUpdate(() => updateWeather());
   onDraw(() => drawWeather());
 
-  onKeyPress("enter", () => go("game", { numPlayers, levelIdx: 0 }));
+  onKeyPress("enter", () => go("game", { numPlayers, levelIdx: 0, botEnabled }));
   onKeyPress("tab",   () => go("title"));
 });
 
