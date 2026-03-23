@@ -245,6 +245,8 @@ scene("title", () => {
   let selectedMode = 0;
   let onlineWaiting = false;   // true while host waits for guest (or guest connects)
   let onlineStatus  = "";      // status text shown during online flow
+  let joiningRoom   = false;   // true while typing room code
+  let joinCode      = "";      // room code being typed
   const MODES = [
     { label: "1 JUGADOR",           desc: "Jugás solo",                           numPlayers: 1, botEnabled: false, online: false, join: false },
     { label: "1P + COMPAÑERO IA",   desc: "Un compañero controlado por la IA",    numPlayers: 2, botEnabled: true,  online: false, join: false },
@@ -352,8 +354,8 @@ scene("title", () => {
     arrowL.opacity = aPulse;
     arrowR.opacity = aPulse;
 
-    // Auto-start countdown (paused during online waiting)
-    if (!onlineWaiting) {
+    // Auto-start countdown (paused during online waiting or join input)
+    if (!onlineWaiting && !joiningRoom) {
       autoStartTimer -= dt();
       const secs = Math.max(0, Math.ceil(autoStartTimer));
       timerLabel.text = secs > 0 ? `Starting in ${secs}...` : "";
@@ -361,7 +363,7 @@ scene("title", () => {
         const m = MODES[selectedMode];
         go("game", { numPlayers: m.numPlayers, botEnabled: m.botEnabled, levelIdx: 0 });
       }
-    } else {
+    } else if (joiningRoom || onlineWaiting) {
       timerLabel.text = onlineStatus;
     }
   });
@@ -370,10 +372,10 @@ scene("title", () => {
   // Up/down = level select, Left/right = mode cycle
   const resetTimer = () => { autoStartTimer = 10; };
 
-  const navUp   = () => { selectedLevel = Math.max(0, selectedLevel - 1);              resetTimer(); };
-  const navDown = () => { selectedLevel = Math.min(LEVELS.length - 1, selectedLevel + 1); resetTimer(); };
-  const navModeLeft  = () => { selectedMode = (selectedMode - 1 + MODES.length) % MODES.length; resetTimer(); };
-  const navModeRight = () => { selectedMode = (selectedMode + 1) % MODES.length;               resetTimer(); };
+  const navUp   = () => { if (joiningRoom) return; selectedLevel = Math.max(0, selectedLevel - 1);              resetTimer(); };
+  const navDown = () => { if (joiningRoom) return; selectedLevel = Math.min(LEVELS.length - 1, selectedLevel + 1); resetTimer(); };
+  const navModeLeft  = () => { if (joiningRoom) return; selectedMode = (selectedMode - 1 + MODES.length) % MODES.length; resetTimer(); };
+  const navModeRight = () => { if (joiningRoom) return; selectedMode = (selectedMode + 1) % MODES.length;               resetTimer(); };
 
   onKeyPress("arrowup",    navUp);
   onKeyPress("w",          navUp);
@@ -385,6 +387,14 @@ scene("title", () => {
   onKeyPress("d",          navModeRight);
   onKeyPress("tab",        navModeRight);
   onKeyPress("enter", () => {
+    if (joiningRoom) {
+      // Submit the typed room code
+      if (joinCode.length >= 4) {
+        joiningRoom = false;
+        startOnlineGuest(joinCode.toUpperCase());
+      }
+      return;
+    }
     if (onlineWaiting) return;
     const m = MODES[selectedMode];
     if (m.online && m.join) {
@@ -396,14 +406,44 @@ scene("title", () => {
     }
   });
 
+  // Room code character input (A-Z, 0-9) — individual key handlers
+  const joinKeys = "abcdefghjklmnpqrstuvwxyz23456789".split("");
+  for (const k of joinKeys) {
+    onKeyPress(k, () => {
+      if (!joiningRoom || joinCode.length >= 4) return;
+      joinCode += k.toUpperCase();
+      onlineStatus = "Código: " + joinCode + (joinCode.length < 4 ? "_" : "  [ENTER]");
+    });
+  }
+  onKeyPress("backspace", () => {
+    if (!joiningRoom) return;
+    joinCode = joinCode.slice(0, -1);
+    onlineStatus = joinCode.length > 0
+      ? "Código: " + joinCode + "_"
+      : "Ingresá código de sala (4 letras):";
+  });
+  onKeyPress("escape", () => {
+    if (joiningRoom) {
+      joiningRoom = false;
+      joinCode = "";
+      onlineStatus = "";
+    }
+  });
+
   // ── Online 2P flows ────────────────────────────────────────────────────────
 
   async function startOnlineHost() {
     onlineWaiting = true;
     onlineStatus = "Creando sala...";
 
-    await initSupabase();
-    const result = await createRoom();
+    let result;
+    try {
+      await initSupabase();
+      result = await createRoom();
+    } catch (e) {
+      console.error("[Online Host] Error:", e);
+      result = { error: e.message || "Error de conexión" };
+    }
     if (result.error) {
       onlineStatus = "Error: " + result.error;
       wait(3, () => { onlineWaiting = false; onlineStatus = ""; });
@@ -412,7 +452,9 @@ scene("title", () => {
 
     onlineStatus = "Esperando jugador 2...";
     showQROverlay(result.roomId);
-    await startHostSession(result.roomId);
+    try { await startHostSession(result.roomId); } catch (e) {
+      console.error("[Online Host] Session error:", e);
+    }
 
     // Wait for guest to join
     const onJoined = () => {
@@ -427,12 +469,10 @@ scene("title", () => {
   }
 
   function startOnlineJoin() {
-    // Prompt for room code (simple browser prompt — works on mobile + desktop)
-    const code = prompt("Ingresá el código de sala (4 letras):");
-    if (!code || code.trim().length < 4) {
-      return; // cancelled or invalid
-    }
-    startOnlineGuest(code.trim().toUpperCase());
+    // In-game room code input — avoids prompt() which blocks the game loop
+    joiningRoom = true;
+    joinCode = "";
+    onlineStatus = "Ingresá código de sala (4 letras):";
   }
 
   async function startOnlineGuest(roomCode) {
@@ -440,8 +480,14 @@ scene("title", () => {
     selectedMode = MODES.findIndex(m => m.online);
     onlineStatus = "Conectando a sala " + roomCode + "...";
 
-    await initSupabase();
-    const result = await startGuestSession(roomCode);
+    let result;
+    try {
+      await initSupabase();
+      result = await startGuestSession(roomCode);
+    } catch (e) {
+      console.error("[Online Guest] Error:", e);
+      result = { error: e.message || "Error de conexión" };
+    }
     if (result && result.error) {
       onlineStatus = "Error: " + result.error;
       wait(3, () => { onlineWaiting = false; onlineStatus = ""; });
@@ -481,7 +527,8 @@ scene("title", () => {
 // SCENE — MAIN GAME
 // =============================================================================
 
-scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabled = false, online = false, isHost = true }) => {
+scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabled = false, online: _online = false, isHost = true }) => {
+  let online = _online;  // mutable — may switch to false on disconnect
 
   const lvl = LEVELS[levelIdx];
 
@@ -1022,7 +1069,7 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
 
     // Apply latest state snapshot from host
     const st = MP.lastState;
-    if (!st) return;
+    if (!st || !st.players || !st.enemies || !st.pickups) return;
 
     // Players
     st.players.forEach((pd, i) => {

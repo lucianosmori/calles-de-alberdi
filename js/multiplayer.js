@@ -61,12 +61,16 @@ async function initSupabase() {
     return null;
   }
   // Sign in anonymously so we get a user UUID for room creation / RLS
-  const { data: { session } } = await sb.auth.getSession();
-  if (!session) {
-    const { error } = await sb.auth.signInAnonymously();
-    if (error) {
-      console.error("[Supabase] Anonymous sign-in failed:", error.message);
+  try {
+    const { data } = await sb.auth.getSession();
+    if (!data?.session) {
+      const { error } = await sb.auth.signInAnonymously();
+      if (error) {
+        console.error("[Supabase] Anonymous sign-in failed:", error.message);
+      }
     }
+  } catch (e) {
+    console.error("[Supabase] Auth error:", e.message);
   }
   return sb;
 }
@@ -398,7 +402,13 @@ async function startGuestSession(roomId) {
   if (!sb) return { error: "Supabase not configured" };
 
   // Join the room in the database
-  const joinResult = await joinRoom(roomId);
+  let joinResult;
+  try {
+    joinResult = await joinRoom(roomId);
+  } catch (e) {
+    console.error("[MP Guest] joinRoom threw:", e);
+    return { error: "Error de conexión" };
+  }
   if (joinResult.error) return joinResult;
 
   MP.active = true;
