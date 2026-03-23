@@ -469,10 +469,51 @@ scene("title", () => {
   }
 
   function startOnlineJoin() {
-    // In-game room code input — avoids prompt() which blocks the game loop
-    joiningRoom = true;
-    joinCode = "";
-    onlineStatus = "Ingresá código de sala (4 letras):";
+    const isMobile = window.matchMedia("(pointer: coarse)").matches;
+    if (isMobile) {
+      // Mobile: use HTML overlay with native keyboard
+      showJoinOverlay((code) => {
+        if (code) startOnlineGuest(code.toUpperCase());
+      });
+    } else {
+      // Desktop: in-game keyboard input
+      joiningRoom = true;
+      joinCode = "";
+      onlineStatus = "Ingresá código de sala (4 letras):";
+    }
+  }
+
+  function showJoinOverlay(callback) {
+    const overlay = document.getElementById("join-overlay");
+    const input   = document.getElementById("join-input");
+    const submit  = document.getElementById("join-submit");
+    const cancel  = document.getElementById("join-cancel");
+    if (!overlay) return;
+
+    input.value = "";
+    overlay.classList.add("visible");
+    input.focus();
+
+    const cleanup = () => {
+      overlay.classList.remove("visible");
+      submit.onclick = null;
+      cancel.onclick = null;
+      input.onkeydown = null;
+    };
+
+    submit.onclick = () => {
+      const code = input.value.trim().toUpperCase();
+      if (code.length >= 4) { cleanup(); callback(code); }
+    };
+    cancel.onclick = () => { cleanup(); callback(null); };
+    input.onkeydown = (e) => {
+      if (e.key === "Enter") {
+        const code = input.value.trim().toUpperCase();
+        if (code.length >= 4) { cleanup(); callback(code); }
+      } else if (e.key === "Escape") {
+        cleanup(); callback(null);
+      }
+    };
   }
 
   async function startOnlineGuest(roomCode) {

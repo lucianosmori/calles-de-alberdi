@@ -136,6 +136,44 @@
     #qr-overlay .qr-title { font-size: 18px; margin-bottom: 8px; }
     #qr-overlay .qr-url { font-size: 11px; color: #aaa; word-break: break-all; max-width: 80%; text-align: center; }
     #qr-overlay .qr-close { margin-top: 16px; padding: 8px 24px; background: rgba(255,80,80,0.5); border: 2px solid rgba(255,80,80,0.8); border-radius: 8px; cursor: pointer; color: #fff; font-size: 14px; }
+
+    /* Join room overlay (mobile-friendly text input) */
+    #join-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.88);
+      z-index: 2000;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-family: monospace;
+    }
+    #join-overlay.visible { display: flex; }
+    #join-overlay .join-title { font-size: 18px; margin-bottom: 16px; }
+    #join-input {
+      font-size: 36px; letter-spacing: 12px; text-align: center;
+      width: 200px; padding: 8px 12px;
+      background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.4);
+      border-radius: 8px; color: #fff; font-family: monospace;
+      text-transform: uppercase; outline: none;
+    }
+    #join-input::placeholder { color: rgba(255,255,255,0.25); letter-spacing: 4px; font-size: 18px; }
+    #join-input:focus { border-color: rgba(80,200,80,0.8); }
+    #join-submit {
+      margin-top: 16px; padding: 10px 32px;
+      background: rgba(80,200,80,0.4); border: 2px solid rgba(80,200,80,0.7);
+      border-radius: 8px; color: #fff; font-size: 16px; font-family: monospace;
+      cursor: pointer;
+    }
+    #join-submit:active { filter: brightness(1.4); }
+    #join-cancel {
+      margin-top: 10px; padding: 6px 20px;
+      background: rgba(160,160,160,0.25); border: 2px solid rgba(160,160,160,0.5);
+      border-radius: 8px; color: #fff; font-size: 13px; font-family: monospace;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -147,6 +185,14 @@
     <canvas id="qr-canvas" width="200" height="200"></canvas>
     <div class="qr-url" id="qr-url-text"></div>
     <div class="qr-close" id="qr-close">CERRAR</div>
+  </div>
+
+  <!-- Join room overlay (mobile-friendly text input) -->
+  <div id="join-overlay">
+    <div class="join-title">Código de sala</div>
+    <input id="join-input" type="text" maxlength="4" placeholder="ABCD" autocomplete="off" autocapitalize="characters" />
+    <div id="join-submit">UNIRSE</div>
+    <div id="join-cancel">CANCELAR</div>
   </div>
 
   <!-- Virtual gamepad (touch devices only — shown by JS) -->
