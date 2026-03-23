@@ -250,7 +250,6 @@ scene("title", () => {
   const MODES = [
     { label: "1 JUGADOR",           desc: "Jugás solo",                           numPlayers: 1, botEnabled: false, online: false, join: false },
     { label: "1P + COMPAÑERO IA",   desc: "Un compañero controlado por la IA",    numPlayers: 2, botEnabled: true,  online: false, join: false },
-    { label: "2P MISMO DISPOSITIVO",desc: "Dos jugadores, un teclado (P2: IJKL)", numPlayers: 2, botEnabled: false, online: false, join: false },
     { label: "CREAR SALA ONLINE",   desc: "Creá una sala y compartí el código",   numPlayers: 2, botEnabled: false, online: true,  join: false },
     { label: "UNIRSE A SALA",       desc: "Ingresá un código para unirte",        numPlayers: 2, botEnabled: false, online: true,  join: true  },
   ];
@@ -472,8 +471,11 @@ scene("title", () => {
     const isMobile = window.matchMedia("(pointer: coarse)").matches;
     if (isMobile) {
       // Mobile: use HTML overlay with native keyboard
+      onlineWaiting = true;
+      onlineStatus = "Ingresá código...";
       showJoinOverlay((code) => {
-        if (code) startOnlineGuest(code.toUpperCase());
+        if (code) { startOnlineGuest(code.toUpperCase()); return; }
+        onlineWaiting = false; onlineStatus = "";
       });
     } else {
       // Desktop: in-game keyboard input

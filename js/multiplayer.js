@@ -276,10 +276,18 @@ function showQROverlay(roomId) {
   if (codeEl)  codeEl.textContent = roomId;
 
   // Generate QR code (library loaded in index.html)
-  if (typeof QRCode !== "undefined" && canvas) {
-    QRCode.toCanvas(canvas, url, { width: 200, margin: 1 }, (err) => {
-      if (err) console.error("[QR]", err);
-    });
+  if (canvas) {
+    try {
+      if (typeof QRCode !== "undefined" && QRCode.toCanvas) {
+        QRCode.toCanvas(canvas, url, { width: 200, margin: 1 }, (err) => {
+          if (err) console.error("[QR] toCanvas error:", err);
+        });
+      } else {
+        console.warn("[QR] QRCode library not loaded — check CDN script in index.html");
+      }
+    } catch (e) {
+      console.error("[QR] Exception:", e);
+    }
   }
 
   overlay.classList.add("visible");

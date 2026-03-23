@@ -1115,13 +1115,14 @@ function drawHUD(players, waveIdx, lvl, enemies, bossObjs, phase, score, comboCo
   const vh = typeof VIEW_H !== "undefined" ? VIEW_H : SCREEN_H;
 
   // ── Per-player bars ──────────────────────────────────────────────────────
-  const barW = Math.min(200, vw - 20);           // fit within narrow viewport
-  const barSpacing = barW + 18;
+  const narrow = vw < 500;  // mobile / narrow viewport
+  const barW = narrow ? Math.min(vw * 0.55, 200) : Math.min(200, vw - 20);
+  const rowH = narrow ? 24 : 0;  // vertical stacking offset for narrow
 
   for (let i = 0; i < players.length; i++) {
     const p  = players[i];
-    const bx = 8 + i * barSpacing;
-    const by = 18;
+    const bx = narrow ? 8 : (8 + i * (barW + 18));
+    const by = narrow ? (14 + i * rowH) : 18;
 
     // Name
     drawText({ text: p.cfg.name, pos: vec2(bx, by), size: 8, color: rgb(...p.cfg.col) });
@@ -1144,45 +1145,62 @@ function drawHUD(players, waveIdx, lvl, enemies, bossObjs, phase, score, comboCo
                  pos: vec2(bx + barW / 2, by + 12), size: 9, color: rgb(80, 255, 80), anchor: "center" });
     }
 
-    // Held weapon
-    if (p.heldWeapon) {
+    // Held weapon (skip on narrow to save space)
+    if (!narrow && p.heldWeapon) {
       const wdef = PICKUP_DEFS[p.heldWeapon.type];
       drawText({ text: `[${wdef.label} ×${p.heldWeapon.uses}]`,
                  pos: vec2(bx, by + 27), size: 8, color: rgb(255, 200, 60) });
     }
 
-    // Special cooldown / ready indicator
-    if (p.specialCooldown > 0) {
-      drawText({ text: `SPL ${Math.ceil(p.specialCooldown)}s`,
-                 pos: vec2(bx + barW - 52, by + 27), size: 8, color: rgb(160, 100, 200) });
-    } else {
-      drawText({ text: "SPL RDY",
-                 pos: vec2(bx + barW - 52, by + 27), size: 8, color: rgb(210, 160, 255) });
+    // Special cooldown / ready indicator (skip on narrow)
+    if (!narrow) {
+      if (p.specialCooldown > 0) {
+        drawText({ text: `SPL ${Math.ceil(p.specialCooldown)}s`,
+                   pos: vec2(bx + barW - 52, by + 27), size: 8, color: rgb(160, 100, 200) });
+      } else {
+        drawText({ text: "SPL RDY",
+                   pos: vec2(bx + barW - 52, by + 27), size: 8, color: rgb(210, 160, 255) });
+      }
     }
-  }
-
-  // ── Centre: wave or boss indicator ──────────────────────────────────────
-  if (phase === "wave") {
-    drawText({ text: `WAVE ${waveIdx + 1}/${lvl.waves.length}`,
-               pos: vec2(vw / 2 - 26, 5), size: 11, color: rgb(255, 215, 60) });
-  } else if (phase === "bossIntro" || phase === "boss") {
-    drawText({ text: "BOSS!",
-               pos: vec2(vw / 2 - 18, 5), size: 13, color: rgb(255, 50, 50) });
   }
 
   // ── Score (top-right) ───────────────────────────────────────────────────
   drawText({ text: `${score}`, pos: vec2(vw - 8, 5),
              size: 11, color: rgb(255, 215, 60), align: "right" });
 
-  // ── Combo indicator (below score) ─────────────────────────────────────
-  if (comboCount >= 3) {
-    drawText({ text: `COMBO ×${comboCount}`, pos: vec2(vw - 8, 19),
-               size: 9, color: rgb(255, 140, 40), align: "right" });
+  // ── Wave or boss indicator ──────────────────────────────────────────────
+  // On narrow screens: right-aligned below score. On wide: centered top.
+  let infoY = 19;
+  if (narrow) {
+    if (phase === "wave") {
+      drawText({ text: `WAVE ${waveIdx + 1}/${lvl.waves.length}`,
+                 pos: vec2(vw - 8, infoY), size: 9, color: rgb(255, 215, 60), align: "right" });
+      infoY += 13;
+    } else if (phase === "bossIntro" || phase === "boss") {
+      drawText({ text: "BOSS!",
+                 pos: vec2(vw - 8, infoY), size: 11, color: rgb(255, 50, 50), align: "right" });
+      infoY += 13;
+    }
+  } else {
+    if (phase === "wave") {
+      drawText({ text: `WAVE ${waveIdx + 1}/${lvl.waves.length}`,
+                 pos: vec2(vw / 2 - 26, 5), size: 11, color: rgb(255, 215, 60) });
+    } else if (phase === "bossIntro" || phase === "boss") {
+      drawText({ text: "BOSS!",
+                 pos: vec2(vw / 2 - 18, 5), size: 13, color: rgb(255, 50, 50) });
+    }
   }
 
-  // ── Enemy count (top-right, shifted down) ──────────────────────────────
+  // ── Combo indicator ───────────────────────────────────────────────────
+  if (comboCount >= 3) {
+    drawText({ text: `COMBO ×${comboCount}`, pos: vec2(vw - 8, infoY),
+               size: 9, color: rgb(255, 140, 40), align: "right" });
+    infoY += 13;
+  }
+
+  // ── Enemy count ───────────────────────────────────────────────────────
   const alive = enemies.filter(e => e.state !== "dead").length;
-  drawText({ text: `×${alive}`, pos: vec2(vw - 30, comboCount >= 3 ? 32 : 19),
+  drawText({ text: `×${alive}`, pos: vec2(vw - 30, infoY),
              size: 11, color: rgb(215, 85, 85) });
 
   // ── Boss HP bar (bottom of screen) ──────────────────────────────────────
