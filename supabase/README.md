@@ -30,7 +30,7 @@ This lets the JS client call `supabase.auth.signInAnonymously()` to get a sessio
 ### What it creates:
 - `leaderboard` table with RLS (public read/insert)
 - `game_rooms` table with RLS (host-only updates, rate limiting)
-- Rate limit trigger: max 3 rooms per hour per user
+- Rate limit trigger: max 3 **active** rooms per hour per user (finished rooms don't count)
 - `join_room()` function: atomic guest join with row locking
 - `cleanup_stale_rooms()` function: expire old waiting rooms
 - Realtime publication for `game_rooms`
@@ -114,21 +114,22 @@ console.log(scores);
 ### Multiplayer rooms
 Check the `game_rooms` table in **Table Editor** after creating a room in-game.
 
-## 9. Optional: Stale Room Cleanup
+## 9. Stale Room Cleanup
 
-The `cleanup_stale_rooms()` function expires rooms older than 30 minutes. You can:
+**Automatic (client-side):** The game calls `cleanup_my_stale_rooms()` RPC before every room creation. This finishes the user's own stale rooms (>30 min) and frees their rate limit quota. No server-side cron needed.
+
+**Optional (global cleanup):** The `cleanup_stale_rooms()` function expires ALL stale waiting rooms. You can:
 
 - **Manual:** Run `SELECT cleanup_stale_rooms();` in the SQL Editor occasionally.
-- **Automatic (pg_cron):** If your Supabase plan supports it, enable the pg_cron extension and add:
+- **Automatic (pg_cron):** If your Supabase plan supports it:
   ```sql
   select cron.schedule('cleanup-rooms', '*/10 * * * *', 'select cleanup_stale_rooms()');
   ```
-  This runs every 10 minutes.
 
 ## Security Notes
 
 - The **anon key** is a public key — it's safe to use in browser code. It only has the permissions you grant via RLS policies.
 - All table access is controlled by RLS. Even with the anon key, users can only do what the policies allow.
-- The rate limit trigger prevents room spam (3 rooms/hour per anonymous user).
+- The rate limit trigger prevents room spam (3 active rooms/hour per anonymous user). Finished rooms don't count.
 - The `join_room()` function uses `FOR UPDATE` row locking to prevent race conditions.
 - Anonymous auth sessions expire after the Supabase default (configurable in dashboard under Auth > Settings).

@@ -28,6 +28,8 @@ const DIALOGUE_FAST_MULTIPLIER = 3;    // speed when holding advance key
 const DIALOGUE_BOX_H           = 80;   // px — height of dialogue overlay
 const DIALOGUE_BOX_MARGIN      = 8;    // px — padding inside box
 const DIALOGUE_PORTRAIT_SIZE   = 56;   // px — portrait square (Phase B)
+const DIALOGUE_AUTO_ADVANCE    = 4;    // seconds — total time per line (from start, not end of typewriter)
+const DIALOGUE_AUTO_ADVANCE_1  = 3;    // seconds — single-line dialogue
 
 // ── Weather ─────────────────────────────────────────────────────────────────
 const RAIN_ANGLE          = 0.18;  // radians — slight diagonal slant
@@ -45,6 +47,11 @@ const SPECIAL_HP_COST = 20;    // HP spent on special move
 const SPECIAL_RADIUS  = 115;   // px — area-of-effect radius
 const SPECIAL_DAMAGE  = 35;
 const SPECIAL_COOLDOWN = 5;    // sec
+
+// ── Respawn (multiplayer) ────────────────────────────────────────────────────
+const MP_LIVES             = 6;    // lives per player in 2P/bot modes (0 = no respawn in 1P)
+const RESPAWN_DELAY        = 3;    // seconds before respawn
+const RESPAWN_IFRAMES      = 2;    // seconds of invincibility after respawn
 
 // Attack configs: range (depth reach), width (lateral tolerance), damage, flash colour
 const ATTACKS = {

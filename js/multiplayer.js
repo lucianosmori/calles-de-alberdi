@@ -158,6 +158,9 @@ async function createRoom() {
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return { error: "Not authenticated" };
 
+  // Clean up own stale rooms first (frees rate limit quota)
+  await sb.rpc("cleanup_my_stale_rooms").catch(() => {});
+
   const roomId = generateRoomCode();
   const { error } = await sb
     .from("game_rooms")
@@ -306,6 +309,8 @@ function broadcastGameState(players, enemies, pickups, score, waveIdx, phase, cu
       hp: p.hp, state: p.state, facing: p.facing,
       attackTimer: +(p.attackTimer.toFixed(2)),
       hurtTimer: +(p.hurtTimer.toFixed(2)),
+      lives: p.lives || 0,
+      respawnTimer: +(p.respawnTimer || 0).toFixed(1),
     })),
     enemies: enemies.filter(e => e.state !== "dead").map(e => ({
       id: e._mpId, type: e.type,

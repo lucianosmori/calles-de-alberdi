@@ -80,9 +80,10 @@ create policy "Host can delete own room"
   using (auth.uid() = host_id);
 
 
--- ── 3. Rate Limiting — max 3 rooms per hour per user ────────────────────────
+-- ── 3. Rate Limiting — max 3 active rooms per hour per user ─────────────────
 
--- Function that checks how many rooms a user created in the last hour.
+-- Function that checks how many ACTIVE rooms a user created in the last hour.
+-- Only counts 'waiting' and 'playing' rooms — finished/abandoned rooms don't block.
 -- Called by a trigger BEFORE INSERT on game_rooms.
 create or replace function check_room_rate_limit()
 returns trigger as $$
@@ -92,10 +93,11 @@ begin
   select count(*) into recent_count
   from game_rooms
   where host_id = new.host_id
-    and created_at > now() - interval '1 hour';
+    and created_at > now() - interval '1 hour'
+    and status in ('waiting', 'playing');
 
   if recent_count >= 3 then
-    raise exception 'Rate limit exceeded: max 3 rooms per hour'
+    raise exception 'Rate limit exceeded: max 3 active rooms per hour'
       using errcode = 'P0001';
   end if;
 
@@ -159,6 +161,21 @@ begin
   update game_rooms
   set status = 'finished'
   where status = 'waiting'
+    and created_at < now() - interval '30 minutes';
+end;
+$$ language plpgsql security definer;
+
+-- Per-user cleanup: called by the client before creating a new room.
+-- Finishes the caller's own stale rooms (waiting/playing >30 min).
+-- No pg_cron needed — runs automatically on each room creation attempt.
+
+create or replace function cleanup_my_stale_rooms()
+returns void as $$
+begin
+  update game_rooms
+  set status = 'finished'
+  where host_id = auth.uid()
+    and status in ('waiting', 'playing')
     and created_at < now() - interval '30 minutes';
 end;
 $$ language plpgsql security definer;

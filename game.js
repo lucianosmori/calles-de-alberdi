@@ -594,6 +594,7 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
   // Spawn player(s)
   for (let i = 0; i < numPlayers; i++) {
     const p = spawnPlayer(i);
+    p.lives = numPlayers > 1 ? MP_LIVES : 0;   // respawn only in multiplayer
     players.push(p);
     if (i === 1 && botEnabled) {
       p.isBot = true;
@@ -1077,6 +1078,8 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
       players[i].pos.x = lerp(players[i].pos.x, pd.x, 0.4);
       players[i].pos.y = lerp(players[i].pos.y, pd.y, 0.4);
       players[i].hp = pd.hp;
+      players[i].lives = pd.lives || 0;
+      players[i].respawnTimer = pd.respawnTimer || 0;
       if (players[i].state !== pd.state) {
         players[i].state = pd.state;
         if (players[i].cfg.sprite) {
@@ -1193,10 +1196,38 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
     popTransform();
   });
 
-  // Game-over check — all players dead (host only in online)
+  // ── Respawn system (multiplayer only) ──────────────────────────────────────
   onUpdate(() => {
     if (online && !isHost) return;
-    if (players.length > 0 && players.every(p => p.hp <= 0)) {
+    for (const p of players) {
+      if (p.hp > 0 || p.lives <= 0) continue;  // alive or out of lives
+      if (p.respawnTimer <= 0 && p.hp <= 0) {
+        // Just died — start countdown
+        p.respawnTimer = RESPAWN_DELAY;
+      }
+      p.respawnTimer -= dt();
+      if (p.respawnTimer <= 0) {
+        // Respawn!
+        p.lives -= 1;
+        p.hp = p.maxHp;
+        p.state = "idle";
+        p.hurtTimer = RESPAWN_IFRAMES;   // invincibility after respawn
+        p.respawnTimer = 0;
+        // Move near a living ally or section start
+        const ally = players.find(a => a !== p && a.hp > 0);
+        if (ally) {
+          p.pos.x = ally.pos.x - 30;
+          p.pos.y = ally.pos.y;
+        }
+        spawnFloatText("RESPAWN!", p.pos.x, p.pos.y - 60, [80, 255, 80]);
+      }
+    }
+  });
+
+  // Game-over check — all players dead AND out of lives (host only in online)
+  onUpdate(() => {
+    if (online && !isHost) return;
+    if (players.length > 0 && players.every(p => p.hp <= 0 && p.lives <= 0)) {
       const playerName = numPlayers === 2
         ? PLAYER_CONFIGS[0].name + " & " + PLAYER_CONFIGS[1].name
         : PLAYER_CONFIGS[0].name;

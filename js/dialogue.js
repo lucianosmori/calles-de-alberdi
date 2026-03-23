@@ -51,6 +51,7 @@ function showDialogue(lines, onComplete) {
   _dlgOnComplete = onComplete || null;
   _dlgSlideIn    = 0;
   _voiceLastIdx  = -1;
+  _dlgAutoTimer  = lines.length === 1 ? DIALOGUE_AUTO_ADVANCE_1 : DIALOGUE_AUTO_ADVANCE;
   document.getElementById("gamepad")?.classList.add("dialogue-active");
 }
 
@@ -129,7 +130,6 @@ function updateDialogue() {
     if (_dlgCharIdx >= line.text.length) {
       _dlgCharIdx = line.text.length;
       _dlgDone = true;
-      _dlgAutoTimer = _dlgLines.length === 1 ? 3 : 4;
     }
 
     // Voice beep — one per new visible character (skip spaces/punctuation)
@@ -147,8 +147,8 @@ function updateDialogue() {
     }
   }
 
-  // Auto-advance countdown
-  if (_dlgDone && _dlgAutoTimer > 0) {
+  // Auto-advance countdown (starts from beginning of line, not end of typewriter)
+  if (_dlgAutoTimer > 0) {
     _dlgAutoTimer -= dt();
   }
 
@@ -158,20 +158,22 @@ function updateDialogue() {
 
   if (shouldAdvance) {
     if (!_dlgDone) {
+      // Skip typewriter — reveal all text immediately
       _dlgCharIdx = line.text.length;
       _dlgDone = true;
-      _dlgAutoTimer = _dlgLines.length === 1 ? 3 : 4;
+      // Timer already running from line start; don't reset it
     } else {
       _dlgLineIdx++;
       _voiceLastIdx = -1;
-      _dlgAutoTimer = 0;
       if (_dlgLineIdx >= _dlgLines.length) {
         _dlgActive = false;
+        _dlgAutoTimer = 0;
         document.getElementById("gamepad")?.classList.remove("dialogue-active");
         if (_dlgOnComplete) _dlgOnComplete();
       } else {
         _dlgCharIdx = 0;
         _dlgDone = false;
+        _dlgAutoTimer = _dlgLines.length === 1 ? DIALOGUE_AUTO_ADVANCE_1 : DIALOGUE_AUTO_ADVANCE;
       }
     }
   }

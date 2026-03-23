@@ -582,6 +582,8 @@ function spawnPlayer(idx) {
       specialCooldown:0,
       facing:         1,        // 1 = right, −1 = left
       heldWeapon:     null,     // { type, uses, damage } or null
+      lives:          0,        // set by game scene (MP_LIVES in multiplayer, 0 in single)
+      respawnTimer:   0,        // countdown until respawn (0 = not respawning)
     },
   ]);
   if (useSprite) p.play("idle");
@@ -1131,6 +1133,16 @@ function drawHUD(players, waveIdx, lvl, enemies, bossObjs, phase, score, comboCo
                color: p.hp < 25 ? rgb(210, 40, 40) : rgb(60, 195, 60) });
     // HP number
     drawText({ text: `${p.hp}`, pos: vec2(bx + 4, by + 12), size: 9, color: rgb(240, 240, 240) });
+
+    // Lives (multiplayer only)
+    if (p.lives > 0 || p.respawnTimer > 0) {
+      drawText({ text: `x${p.lives}`, pos: vec2(bx + barW - 18, by + 12), size: 9, color: rgb(200, 200, 200) });
+    }
+    // Respawn countdown
+    if (p.hp <= 0 && p.lives > 0 && p.respawnTimer > 0) {
+      drawText({ text: `RESPAWN ${Math.ceil(p.respawnTimer)}`,
+                 pos: vec2(bx + barW / 2, by + 12), size: 9, color: rgb(80, 255, 80), anchor: "center" });
+    }
 
     // Held weapon
     if (p.heldWeapon) {
