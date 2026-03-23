@@ -652,6 +652,60 @@ function updatePlayerMovement(p, bounds) {
 
 
 // =============================================================================
+// REMOTE PLAYER (ONLINE 2P — HOST READS GUEST INPUT)
+// =============================================================================
+
+/**
+ * Update P2 movement using network input from MP.guestInput (host side only).
+ * Mirrors updatePlayerMovement() but reads from MP.guestInput instead of isKeyDown().
+ */
+function updateRemotePlayer(p, bounds) {
+  const cfg = p.cfg;
+
+  p.attackTimer     = Math.max(0, p.attackTimer     - dt());
+  p.hurtTimer       = Math.max(0, p.hurtTimer       - dt());
+  p.specialCooldown = Math.max(0, p.specialCooldown - dt());
+
+  // Color tint
+  if (p.hurtTimer > 0) {
+    p.color = rgb(...cfg.hurtCol);
+  } else {
+    p.color = cfg.sprite ? rgb(255, 255, 255) : rgb(...cfg.col);
+  }
+  if (cfg.sprite) p.flipX = (p.facing < 0);
+  if (cfg.sprite && p.state !== p._lastState) {
+    p.play(p.state);
+    p._lastState = p.state;
+  }
+
+  const locked = p.attackTimer > 0 || p.hurtTimer > 0;
+  if (locked) { p.z = p.pos.y; return; }
+
+  const inp = MP.guestInput;
+  let dx = 0, dy = 0;
+  if (inp.left)  { dx--; p.facing = -1; }
+  if (inp.right) { dx++; p.facing =  1; }
+  if (inp.up)    dy--;
+  if (inp.down)  dy++;
+
+  if (dx !== 0 || dy !== 0) {
+    const len = Math.sqrt(dx * dx + dy * dy);
+    p.pos.x += (dx / len) * PLAYER_SPEED * dt();
+    p.pos.y += (dy / len) * PLAYER_SPEED * dt();
+    p.state = "walk";
+  } else {
+    p.state = "idle";
+  }
+
+  const bLeft  = bounds ? bounds.left  : 20;
+  const bRight = bounds ? bounds.right : SCREEN_W - 20;
+  p.pos.x = clamp(p.pos.x, bLeft, bRight);
+  p.pos.y = clamp(p.pos.y, GROUND_TOP + 24, GROUND_BOTTOM);
+  p.z = p.pos.y;
+}
+
+
+// =============================================================================
 // BOT COMPANION AI
 // =============================================================================
 

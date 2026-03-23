@@ -232,3 +232,241 @@ function getRoomUrl(roomId) {
   const base = window.location.origin + window.location.pathname;
   return `${base}?room=${roomId}`;
 }
+
+
+// ── Online 2P State & Sync ─────────────────────────────────────────────────
+
+const MP = {
+  active:     false,
+  isHost:     false,
+  roomId:     null,
+  channel:    null,
+  guestInput: { left:false, right:false, up:false, down:false, punch:false, kick:false, special:false },
+  lastState:  null,    // latest game snapshot (guest stores this)
+  connected:  false,   // presence shows 2 users
+  sendTimer:  0,       // throttle for host broadcasts
+  disconnectTimer: -1, // countdown for reconnect window (-1 = not active)
+};
+
+/** Read ?room=CODE from URL. Returns code string or null. */
+function parseRoomFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("room");
+  return code ? code.toUpperCase() : null;
+}
+
+/** Show QR overlay with room code + scannable URL. */
+function showQROverlay(roomId) {
+  const overlay = document.getElementById("qr-overlay");
+  const canvas  = document.getElementById("qr-canvas");
+  const urlText = document.getElementById("qr-url-text");
+  const codeEl  = document.getElementById("qr-room-code");
+
+  if (!overlay) return;
+
+  const url = getRoomUrl(roomId);
+  if (urlText) urlText.textContent = url;
+  if (codeEl)  codeEl.textContent = roomId;
+
+  // Generate QR code (library loaded in index.html)
+  if (typeof QRCode !== "undefined" && canvas) {
+    QRCode.toCanvas(canvas, url, { width: 200, margin: 1 }, (err) => {
+      if (err) console.error("[QR]", err);
+    });
+  }
+
+  overlay.classList.add("visible");
+
+  // Wire close button
+  const closeBtn = document.getElementById("qr-close");
+  if (closeBtn) {
+    closeBtn.onclick = () => overlay.classList.remove("visible");
+  }
+}
+
+/** Hide QR overlay. */
+function hideQROverlay() {
+  const overlay = document.getElementById("qr-overlay");
+  if (overlay) overlay.classList.remove("visible");
+}
+
+/**
+ * Host broadcasts game state snapshot (~20Hz).
+ */
+function broadcastGameState(players, enemies, pickups, score, waveIdx, phase, currentSection, sectionOpen) {
+  if (!MP.channel || !MP.isHost) return;
+
+  const data = {
+    players: players.map(p => ({
+      x: Math.round(p.pos.x), y: Math.round(p.pos.y),
+      hp: p.hp, state: p.state, facing: p.facing,
+      attackTimer: +(p.attackTimer.toFixed(2)),
+      hurtTimer: +(p.hurtTimer.toFixed(2)),
+    })),
+    enemies: enemies.filter(e => e.state !== "dead").map(e => ({
+      id: e._mpId, type: e.type,
+      x: Math.round(e.pos.x), y: Math.round(e.pos.y),
+      hp: e.hp, state: e.state,
+    })),
+    pickups: pickups.map(pk => ({
+      id: pk._mpId, type: pk.pickupType,
+      x: Math.round(pk.pos.x), y: Math.round(pk.pos.y),
+    })),
+    score, waveIdx, phase, currentSection, sectionOpen,
+    t: Date.now(),
+  };
+
+  MP.channel.send({ type: "broadcast", event: "game_state", payload: data });
+}
+
+/** Guest sends input state every frame. */
+function sendGuestInput(inputState) {
+  if (!MP.channel || MP.isHost) return;
+  MP.channel.send({ type: "broadcast", event: "guest_input", payload: inputState });
+}
+
+/** Host tells guest to change scene. */
+function broadcastSceneChange(sceneName, params) {
+  if (!MP.channel || !MP.isHost) return;
+  MP.channel.send({ type: "broadcast", event: "scene_change", payload: { scene: sceneName, params } });
+}
+
+/**
+ * Start a host session: subscribe to room, track presence, listen for guest input.
+ */
+async function startHostSession(roomId) {
+  const sb = getSupabase();
+  if (!sb) return;
+
+  MP.active = true;
+  MP.isHost = true;
+  MP.roomId = roomId;
+  MP.connected = false;
+  sessionStorage.setItem("mp_room", roomId);
+  sessionStorage.setItem("mp_role", "host");
+
+  const channel = sb.channel(`room:${roomId}`, {
+    config: { presence: { key: roomId } },
+  });
+
+  // Presence — detect when guest joins/leaves
+  channel.on("presence", { event: "sync" }, () => {
+    const state = channel.presenceState();
+    const count = Object.values(state).flat().length;
+    const wasConnected = MP.connected;
+    MP.connected = count >= 2;
+
+    if (MP.connected && !wasConnected) {
+      MP.disconnectTimer = -1;
+      window.dispatchEvent(new Event("mp-guest-joined"));
+    }
+    if (!MP.connected && wasConnected) {
+      MP.disconnectTimer = 30; // 30s reconnect window
+      window.dispatchEvent(new Event("mp-disconnected"));
+    }
+  });
+
+  // Listen for guest input
+  channel.on("broadcast", { event: "guest_input" }, (msg) => {
+    const inp = msg.payload;
+    if (inp) {
+      MP.guestInput.left    = !!inp.left;
+      MP.guestInput.right   = !!inp.right;
+      MP.guestInput.up      = !!inp.up;
+      MP.guestInput.down    = !!inp.down;
+      MP.guestInput.punch   = !!inp.punch;
+      MP.guestInput.kick    = !!inp.kick;
+      MP.guestInput.special = !!inp.special;
+    }
+  });
+
+  channel.subscribe((status) => {
+    console.log("[MP Host] Channel status:", status);
+  });
+
+  // Track own presence
+  await channel.track({ role: "host" });
+
+  MP.channel = channel;
+}
+
+/**
+ * Start a guest session: join room, subscribe, listen for game state.
+ */
+async function startGuestSession(roomId) {
+  const sb = getSupabase();
+  if (!sb) return { error: "Supabase not configured" };
+
+  // Join the room in the database
+  const joinResult = await joinRoom(roomId);
+  if (joinResult.error) return joinResult;
+
+  MP.active = true;
+  MP.isHost = false;
+  MP.roomId = roomId;
+  MP.connected = false;
+  sessionStorage.setItem("mp_room", roomId);
+  sessionStorage.setItem("mp_role", "guest");
+
+  const channel = sb.channel(`room:${roomId}`, {
+    config: { presence: { key: roomId } },
+  });
+
+  // Presence
+  channel.on("presence", { event: "sync" }, () => {
+    const state = channel.presenceState();
+    const count = Object.values(state).flat().length;
+    const wasConnected = MP.connected;
+    MP.connected = count >= 2;
+
+    if (MP.connected && !wasConnected) {
+      MP.disconnectTimer = -1;
+      window.dispatchEvent(new Event("mp-host-joined"));
+    }
+    if (!MP.connected && wasConnected) {
+      MP.disconnectTimer = 30;
+      window.dispatchEvent(new Event("mp-disconnected"));
+    }
+  });
+
+  // Listen for game state from host
+  channel.on("broadcast", { event: "game_state" }, (msg) => {
+    MP.lastState = msg.payload;
+  });
+
+  // Listen for scene changes from host
+  channel.on("broadcast", { event: "scene_change" }, (msg) => {
+    const { scene, params } = msg.payload || {};
+    if (scene) {
+      window.dispatchEvent(new CustomEvent("mp-scene-change", { detail: { scene, params } }));
+    }
+  });
+
+  channel.subscribe((status) => {
+    console.log("[MP Guest] Channel status:", status);
+  });
+
+  await channel.track({ role: "guest" });
+
+  MP.channel = channel;
+  return { ok: true };
+}
+
+/** Clean up multiplayer session. */
+function cleanupMultiplayer() {
+  if (MP.channel) {
+    try { MP.channel.unsubscribe(); } catch (_) {}
+  }
+  MP.active = false;
+  MP.isHost = false;
+  MP.roomId = null;
+  MP.channel = null;
+  MP.connected = false;
+  MP.lastState = null;
+  MP.sendTimer = 0;
+  MP.disconnectTimer = -1;
+  MP.guestInput = { left:false, right:false, up:false, down:false, punch:false, kick:false, special:false };
+  sessionStorage.removeItem("mp_room");
+  sessionStorage.removeItem("mp_role");
+  hideQROverlay();
+}

@@ -242,12 +242,14 @@ scene("title", () => {
   });
 
   // ── Mode select state ─────────────────────────────────────────────────────
-  // 0 = 1 Jugador, 1 = 1P + Compañero IA, 2 = 2 Jugadores
   let selectedMode = 0;
+  let onlineWaiting = false;   // true while host waits for guest (or guest connects)
+  let onlineStatus  = "";      // status text shown during online flow
   const MODES = [
-    { label: "1 JUGADOR",           numPlayers: 1, botEnabled: false },
-    { label: "1P + COMPAÑERO IA",   numPlayers: 2, botEnabled: true  },
-    { label: "2 JUGADORES",         numPlayers: 2, botEnabled: false },
+    { label: "1 JUGADOR",           numPlayers: 1, botEnabled: false, online: false },
+    { label: "1P + COMPAÑERO IA",   numPlayers: 2, botEnabled: true,  online: false },
+    { label: "2 JUGADORES LOCAL",   numPlayers: 2, botEnabled: false, online: false },
+    { label: "ONLINE 2P",           numPlayers: 2, botEnabled: false, online: true  },
   ];
 
   // Mode labels (below level list)
@@ -351,13 +353,17 @@ scene("title", () => {
       else          { lbl.color.r = 140; lbl.color.g = 135; lbl.color.b = 120; }
     });
 
-    // Auto-start countdown
-    autoStartTimer -= dt();
-    const secs = Math.max(0, Math.ceil(autoStartTimer));
-    timerLabel.text = secs > 0 ? `Starting in ${secs}...` : "";
-    if (autoStartTimer <= 0) {
-      const m = MODES[selectedMode];
-      go("game", { numPlayers: m.numPlayers, botEnabled: m.botEnabled, levelIdx: 0 });
+    // Auto-start countdown (paused during online waiting)
+    if (!onlineWaiting) {
+      autoStartTimer -= dt();
+      const secs = Math.max(0, Math.ceil(autoStartTimer));
+      timerLabel.text = secs > 0 ? `Starting in ${secs}...` : "";
+      if (autoStartTimer <= 0) {
+        const m = MODES[selectedMode];
+        go("game", { numPlayers: m.numPlayers, botEnabled: m.botEnabled, levelIdx: 0 });
+      }
+    } else {
+      timerLabel.text = onlineStatus;
     }
   });
 
@@ -378,9 +384,84 @@ scene("title", () => {
   onKeyPress("d",          navModeRight);
   onKeyPress("tab", navModeRight);
   onKeyPress("enter", () => {
+    if (onlineWaiting) return; // already in online flow
     const m = MODES[selectedMode];
-    go("game", { numPlayers: m.numPlayers, botEnabled: m.botEnabled, levelIdx: selectedLevel });
+    if (m.online) {
+      startOnlineHost();
+    } else {
+      go("game", { numPlayers: m.numPlayers, botEnabled: m.botEnabled, levelIdx: selectedLevel });
+    }
   });
+
+  // ── Online 2P flows ────────────────────────────────────────────────────────
+
+  async function startOnlineHost() {
+    onlineWaiting = true;
+    onlineStatus = "Creando sala...";
+
+    await initSupabase();
+    const result = await createRoom();
+    if (result.error) {
+      onlineStatus = "Error: " + result.error;
+      wait(3, () => { onlineWaiting = false; onlineStatus = ""; });
+      return;
+    }
+
+    onlineStatus = "Esperando jugador 2...";
+    showQROverlay(result.roomId);
+    await startHostSession(result.roomId);
+
+    // Wait for guest to join
+    const onJoined = () => {
+      window.removeEventListener("mp-guest-joined", onJoined);
+      onlineStatus = "Jugador 2 conectado!";
+      hideQROverlay();
+      wait(1, () => {
+        go("game", { numPlayers: 2, botEnabled: false, levelIdx: selectedLevel, online: true, isHost: true });
+      });
+    };
+    window.addEventListener("mp-guest-joined", onJoined);
+  }
+
+  async function startOnlineGuest(roomCode) {
+    onlineWaiting = true;
+    selectedMode = MODES.findIndex(m => m.online);
+    onlineStatus = "Conectando a sala " + roomCode + "...";
+
+    await initSupabase();
+    const result = await startGuestSession(roomCode);
+    if (result && result.error) {
+      onlineStatus = "Error: " + result.error;
+      wait(3, () => { onlineWaiting = false; onlineStatus = ""; });
+      // Clear room from URL
+      window.history.replaceState({}, "", window.location.pathname);
+      return;
+    }
+
+    onlineStatus = "Conectado! Esperando host...";
+
+    const onHostStart = () => {
+      window.removeEventListener("mp-host-joined", onHostStart);
+    };
+    window.addEventListener("mp-host-joined", onHostStart);
+
+    // Listen for scene change from host (host starts the game)
+    const onSceneChange = (e) => {
+      window.removeEventListener("mp-scene-change", onSceneChange);
+      const { scene, params } = e.detail;
+      go(scene, { ...params, online: true, isHost: false });
+    };
+    window.addEventListener("mp-scene-change", onSceneChange);
+  }
+
+  // ── Auto-detect guest via URL (?room=CODE) or sessionStorage ──────────────
+  const urlRoom = parseRoomFromUrl();
+  const storedRoom = sessionStorage.getItem("mp_room");
+  if (urlRoom) {
+    startOnlineGuest(urlRoom);
+  } else if (storedRoom && sessionStorage.getItem("mp_role") === "guest") {
+    startOnlineGuest(storedRoom);
+  }
 });
 
 
@@ -388,7 +469,7 @@ scene("title", () => {
 // SCENE — MAIN GAME
 // =============================================================================
 
-scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabled = false }) => {
+scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabled = false, online = false, isHost = true }) => {
 
   const lvl = LEVELS[levelIdx];
 
@@ -406,6 +487,16 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
   let score       = carriedScore;
   let comboCount  = 0;    // consecutive hits within COMBO_WINDOW
   let comboTimer  = 0;    // seconds remaining in current combo window
+
+  // ── Online multiplayer entity IDs ────────────────────────────────────────
+  let _nextMpId = 1;
+  // Previous guest input for rising-edge attack detection (host only)
+  const _prevGuestInput = { punch: false, kick: false, special: false };
+
+  // If host starting online game, tell guest to load this scene
+  if (online && isHost) {
+    broadcastSceneChange("game", { numPlayers, levelIdx, score: carriedScore, botEnabled, online: true, isHost: true });
+  }
 
   // ── Section locking state ──────────────────────────────────────────────────
   const levelW        = lvl.levelWidth || SCREEN_W;
@@ -436,7 +527,9 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
   // Initial pickups scattered across the level
   for (let i = 0; i < 3; i++) {
     const type = choose(lvl.pickups);
-    pickups.push(spawnPickup(type, rand(80, levelW - 80), rand(GROUND_TOP + 40, GROUND_BOTTOM - 12)));
+    const pk = spawnPickup(type, rand(80, levelW - 80), rand(GROUND_TOP + 40, GROUND_BOTTOM - 12));
+    pk._mpId = _nextMpId++;
+    pickups.push(pk);
   }
 
   // Spawn player(s)
@@ -486,7 +579,9 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
           const x = fromRight
             ? section.endX + rand(20, 60)
             : section.startX - rand(20, 60);
-          enemies.push(spawnEnemy(group.type, x, y));
+          const en = spawnEnemy(group.type, x, y);
+          en._mpId = _nextMpId++;
+          enemies.push(en);
         });
         delay += 0.65;
       }
@@ -515,6 +610,7 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
         const leadX = Math.max(...players.filter(p => p.hp > 0).map(p => p.pos.x));
         const bossX = clamp(leadX + 250 + i * 55, bossSection.startX + 100, bossSection.endX - 20);
         const boss  = spawnEnemy(b.type, bossX, bossY);
+        boss._mpId = _nextMpId++;
         enemies.push(boss);
         bossObjs.push(boss);
       });
@@ -551,13 +647,15 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
         const next = levelIdx + 1;
         if (next < LEVELS.length) {
           Music.stop();
-          go("game", { numPlayers, levelIdx: next, score, botEnabled });
+          if (online && isHost) broadcastSceneChange("game", { numPlayers, levelIdx: next, score, botEnabled, online: true, isHost: true });
+          go("game", { numPlayers, levelIdx: next, score, botEnabled, online, isHost });
         } else {
           Music.stop();
           const playerName = numPlayers === 2
             ? PLAYER_CONFIGS[0].name + " & " + PLAYER_CONFIGS[1].name
             : PLAYER_CONFIGS[0].name;
-          go("victory", { numPlayers, score, playerName, botEnabled });
+          if (online && isHost) broadcastSceneChange("victory", { numPlayers, score, playerName, botEnabled, online: true, isHost: true });
+          go("victory", { numPlayers, score, playerName, botEnabled, online, isHost });
         }
       });
     }
@@ -683,7 +781,9 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
     // Chance to drop a health pickup
     if (!e.def.isBoss && Math.random() < 0.28) {
       const drop = choose(["empanada", "mate", "choripan"]);
-      pickups.push(spawnPickup(drop, e.pos.x, e.pos.y));
+      const dpk = spawnPickup(drop, e.pos.x, e.pos.y);
+      dpk._mpId = _nextMpId++;
+      pickups.push(dpk);
     }
 
     if (e.def.sprite) {
@@ -729,7 +829,7 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
   function debugSkipWave() { pendingSpawns = 0; [...enemies].forEach(e => killEnemy(e)); }
   function debugSkipLevel() {
     const next = levelIdx + 1;
-    if (next < LEVELS.length) go("game", { numPlayers, levelIdx: next, botEnabled });
+    if (next < LEVELS.length) go("game", { numPlayers, levelIdx: next, botEnabled, online, isHost });
   }
   function debugSkipToBoss() {
     // Set state BEFORE killing enemies (killEnemy triggers checkWaveCleared)
@@ -791,6 +891,7 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
 
   // ── Section transition detection ────────────────────────────────────────
   onUpdate(() => {
+    if (online && !isHost) return;
     if (!sectionOpen) return;
     if (currentSection >= sections.length - 1) return;  // already in last section
     const living = players.filter(p => p.hp > 0);
@@ -809,19 +910,38 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
 
   // Player movement — allowed during dialogue (player can walk while reading)
   onUpdate(() => {
+    // Guest doesn't run local simulation for P1 — state comes from host
+    if (online && !isHost) return;
+
     const bounds = getSectionBounds();
     for (const p of players) {
       if (p.hp <= 0) continue;
       if (p.isBot) {
         updateBotPlayer(p, enemies, players, bounds, doAttack);
+      } else if (online && isHost && p.pidx === 1) {
+        // Online P2: host reads guest's network input
+        updateRemotePlayer(p, bounds);
       } else {
         updatePlayerMovement(p, bounds);
       }
     }
+
+    // Host: detect rising-edge attacks from guest input
+    if (online && isHost && players[1] && players[1].hp > 0) {
+      const gi = MP.guestInput;
+      const p2 = players[1];
+      if (gi.punch && !_prevGuestInput.punch && canAttack(p2))  doAttack(p2, "punch");
+      if (gi.kick  && !_prevGuestInput.kick  && canAttack(p2))  doAttack(p2, "kick");
+      if (gi.special && !_prevGuestInput.special && canSpecial(p2)) doSpecial(p2);
+      _prevGuestInput.punch   = gi.punch;
+      _prevGuestInput.kick    = gi.kick;
+      _prevGuestInput.special = gi.special;
+    }
   });
 
-  // Enemy AI — target the closest living player
+  // Enemy AI — target the closest living player (host only in online)
   onUpdate(() => {
+    if (online && !isHost) return;
     if (isDialogueActive()) return;
     const livingPlayers = players.filter(p => p.hp > 0);
     const bounds = getSectionBounds();
@@ -841,12 +961,14 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
 
   // NPC AI (NPCs roam the full level, not locked to current section)
   onUpdate(() => {
+    if (online && !isHost) return;
     const npcBounds = { left: 20, right: levelW - 20 };
     for (const n of npcs) updateNPC(n, players, enemies, npcBounds);
   });
 
-  // Pickup collection — walk over to grab
+  // Pickup collection — walk over to grab (host only in online)
   onUpdate(() => {
+    if (online && !isHost) return;
     for (const p of players) {
       if (p.hp <= 0) continue;
 
@@ -860,6 +982,125 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
       }
     }
   });
+
+  // ── Online: Host broadcasts state at ~20Hz ────────────────────────────────
+  onUpdate(() => {
+    if (!online || !isHost) return;
+    MP.sendTimer += dt();
+    if (MP.sendTimer < 0.050) return;
+    MP.sendTimer = 0;
+    broadcastGameState(players, enemies, pickups, score, waveIdx, phase, currentSection, sectionOpen);
+  });
+
+  // ── Online: Guest sends input + applies host state ────────────────────────
+  onUpdate(() => {
+    if (!online || isHost) return;
+
+    // Send local input to host (guest uses P1 keys on their device)
+    const cfg = PLAYER_CONFIGS[0];
+    sendGuestInput({
+      left:    isKeyDown(cfg.keys.left),
+      right:   isKeyDown(cfg.keys.right),
+      up:      isKeyDown(cfg.keys.up),
+      down:    isKeyDown(cfg.keys.down),
+      punch:   isKeyDown(cfg.keys.punch),
+      kick:    isKeyDown(cfg.keys.kick),
+      special: isKeyDown(cfg.keys.special),
+    });
+
+    // Apply latest state snapshot from host
+    const st = MP.lastState;
+    if (!st) return;
+
+    // Players
+    st.players.forEach((pd, i) => {
+      if (!players[i]) return;
+      players[i].pos.x = lerp(players[i].pos.x, pd.x, 0.4);
+      players[i].pos.y = lerp(players[i].pos.y, pd.y, 0.4);
+      players[i].hp = pd.hp;
+      if (players[i].state !== pd.state) {
+        players[i].state = pd.state;
+        if (players[i].cfg.sprite) {
+          try { players[i].play(pd.state); } catch (_) {}
+        }
+      }
+      players[i].facing = pd.facing;
+      if (players[i].cfg.sprite) players[i].flipX = (pd.facing < 0);
+      players[i].z = players[i].pos.y;
+    });
+
+    // Enemies — sync by _mpId
+    const hostIds = new Set(st.enemies.map(e => e.id));
+    // Remove enemies not in host data
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      if (!hostIds.has(enemies[i]._mpId)) {
+        destroy(enemies[i]);
+        enemies.splice(i, 1);
+      }
+    }
+    // Update or spawn enemies from host data
+    for (const ed of st.enemies) {
+      let local = enemies.find(e => e._mpId === ed.id);
+      if (!local) {
+        local = spawnEnemy(ed.type, ed.x, ed.y);
+        local._mpId = ed.id;
+        enemies.push(local);
+      }
+      local.pos.x = lerp(local.pos.x, ed.x, 0.4);
+      local.pos.y = lerp(local.pos.y, ed.y, 0.4);
+      local.hp = ed.hp;
+      local.state = ed.state;
+      local.z = local.pos.y;
+    }
+
+    // Pickups — sync by _mpId
+    const hostPkIds = new Set(st.pickups.map(p => p.id));
+    for (let i = pickups.length - 1; i >= 0; i--) {
+      if (!hostPkIds.has(pickups[i]._mpId)) {
+        destroy(pickups[i]);
+        pickups.splice(i, 1);
+      }
+    }
+    for (const pd of st.pickups) {
+      let local = pickups.find(p => p._mpId === pd.id);
+      if (!local) {
+        local = spawnPickup(pd.type, pd.x, pd.y);
+        local._mpId = pd.id;
+        pickups.push(local);
+      }
+      local.pos.x = pd.x;
+      local.pos.y = pd.y;
+    }
+
+    score = st.score;
+  });
+
+  // ── Online: Guest listens for scene changes from host ─────────────────────
+  if (online && !isHost) {
+    const onScene = (e) => {
+      const { scene, params } = e.detail;
+      window.removeEventListener("mp-scene-change", onScene);
+      go(scene, { ...params, online: true, isHost: false });
+    };
+    window.addEventListener("mp-scene-change", onScene);
+  }
+
+  // ── Online: Disconnect handling ───────────────────────────────────────────
+  if (online) {
+    const onDisconnect = () => {
+      window.removeEventListener("mp-disconnected", onDisconnect);
+      // Show disconnect banner — game continues, P2 stands idle
+      showBanner("CONEXION PERDIDA", 3);
+      // After 30s, if still disconnected, switch to solo
+      wait(30, () => {
+        if (!MP.connected) {
+          showBanner("Continuando solo...", 2);
+          online = false;
+        }
+      });
+    };
+    window.addEventListener("mp-disconnected", onDisconnect);
+  }
 
   function collectPickup(p, pk) {
     const def = pk.def;
@@ -893,13 +1134,15 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
     popTransform();
   });
 
-  // Game-over check — all players dead
+  // Game-over check — all players dead (host only in online)
   onUpdate(() => {
+    if (online && !isHost) return;
     if (players.length > 0 && players.every(p => p.hp <= 0)) {
       const playerName = numPlayers === 2
         ? PLAYER_CONFIGS[0].name + " & " + PLAYER_CONFIGS[1].name
         : PLAYER_CONFIGS[0].name;
-      wait(0.6, () => { Music.stop(); go("gameover", { numPlayers, levelIdx, score, playerName, botEnabled }); });
+      if (online && isHost) broadcastSceneChange("gameover", { numPlayers, levelIdx, score, playerName, botEnabled, online: true, isHost: true });
+      wait(0.6, () => { Music.stop(); go("gameover", { numPlayers, levelIdx, score, playerName, botEnabled, online, isHost }); });
     }
   });
 
@@ -1079,7 +1322,7 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
 // SCENE — GAME OVER
 // =============================================================================
 
-scene("gameover", ({ numPlayers = 1, levelIdx = 0, score = 0, playerName = "GAUCHO", botEnabled = false }) => {
+scene("gameover", ({ numPlayers = 1, levelIdx = 0, score = 0, playerName = "GAUCHO", botEnabled = false, online = false, isHost = true }) => {
   setCamScale(1); setCamPos(VIEW_W / 2, VIEW_H / 2);
 
   const lvl = LEVELS[levelIdx];
@@ -1103,8 +1346,8 @@ scene("gameover", ({ numPlayers = 1, levelIdx = 0, score = 0, playerName = "GAUC
   onUpdate(() => updateWeather());
   onDraw(() => drawWeather());
 
-  onKeyPress("enter", () => go("game", { numPlayers, levelIdx, botEnabled }));
-  onKeyPress("tab",   () => go("title"));
+  onKeyPress("enter", () => go("game", { numPlayers, levelIdx, botEnabled, online, isHost }));
+  onKeyPress("tab",   () => { cleanupMultiplayer(); go("title"); });
 });
 
 
@@ -1112,7 +1355,7 @@ scene("gameover", ({ numPlayers = 1, levelIdx = 0, score = 0, playerName = "GAUC
 // SCENE — VICTORY
 // =============================================================================
 
-scene("victory", ({ numPlayers = 1, score = 0, playerName = "GAUCHO", botEnabled = false }) => {
+scene("victory", ({ numPlayers = 1, score = 0, playerName = "GAUCHO", botEnabled = false, online = false, isHost = true }) => {
   setCamScale(1); setCamPos(VIEW_W / 2, VIEW_H / 2);
 
   const cx = VIEW_W / 2;
@@ -1165,8 +1408,8 @@ scene("victory", ({ numPlayers = 1, score = 0, playerName = "GAUCHO", botEnabled
   onUpdate(() => updateWeather());
   onDraw(() => drawWeather());
 
-  onKeyPress("enter", () => go("game", { numPlayers, levelIdx: 0, botEnabled }));
-  onKeyPress("tab",   () => go("title"));
+  onKeyPress("enter", () => go("game", { numPlayers, levelIdx: 0, botEnabled, online, isHost }));
+  onKeyPress("tab",   () => { cleanupMultiplayer(); go("title"); });
 });
 
 
