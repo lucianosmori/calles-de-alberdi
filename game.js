@@ -47,9 +47,82 @@ kaplay({
 // Uncomment each block as you drop files into assets/.
 // =============================================================================
 
-// ── Sprite loading stubs ──────────────────────────────────────────────────────
-// No sprites yet — all entities use colored rectangles as placeholders.
-// TODO: Add hero_gaucho, hero_cordobesa, enemy_*, boss_*, npc_* sprites
+// ── Sprite loading ──────────────────────────────────────────────────────────
+
+// Players (12×6 grid, 116×126 cells)
+loadSprite("hero_gaucho", "assets/hero_gaucho.png", {
+  sliceX: 12, sliceY: 6,
+  anims: {
+    idle:    { from: 0,  to: 0  },
+    walk:    { from: 12, to: 23, speed: 10, loop: true },
+    punch:   { from: 24, to: 27, speed: 12 },
+    kick:    { from: 28, to: 31, speed: 12 },
+    special: { from: 36, to: 47, speed: 10 },
+    hurt:    { from: 48, to: 59, speed: 8 },
+    death:   { from: 60, to: 71, speed: 6 },
+  },
+});
+loadSprite("hero_cordobesa", "assets/hero_cordobesa.png", {
+  sliceX: 12, sliceY: 6,
+  anims: {
+    idle:    { from: 0,  to: 0  },
+    walk:    { from: 12, to: 23, speed: 10, loop: true },
+    punch:   { from: 24, to: 27, speed: 12 },
+    kick:    { from: 28, to: 31, speed: 12 },
+    special: { from: 36, to: 47, speed: 10 },
+    hurt:    { from: 48, to: 59, speed: 8 },
+    death:   { from: 60, to: 71, speed: 6 },
+  },
+});
+
+// Enemies (8×4 grid, 116×126 cells)
+for (const eName of ["enemy_punguista", "enemy_patotero", "enemy_naranjita"]) {
+  loadSprite(eName, `assets/${eName}.png`, {
+    sliceX: 8, sliceY: 4,
+    anims: {
+      walk:   { from: 0,  to: 7,  speed: 8, loop: true },
+      attack: { from: 8,  to: 15, speed: 10 },
+      hurt:   { from: 16, to: 19, speed: 8 },
+      death:  { from: 20, to: 23, speed: 6 },
+      idle:   { from: 24, to: 31, speed: 6, loop: true },
+    },
+  });
+}
+
+// Bosses (10×5 grid, 116×126 cells)
+for (const bName of ["boss_comisario", "boss_barra_brava", "boss_puntero", "boss_intendente"]) {
+  loadSprite(bName, `assets/${bName}.png`, {
+    sliceX: 10, sliceY: 5,
+    anims: {
+      idle:    { from: 0,  to: 9,  speed: 6, loop: true },
+      walk:    { from: 10, to: 19, speed: 8, loop: true },
+      attack:  { from: 20, to: 29, speed: 10 },
+      special: { from: 30, to: 39, speed: 8 },
+      hurt:    { from: 40, to: 44, speed: 8 },
+      death:   { from: 45, to: 49, speed: 6 },
+    },
+  });
+}
+
+// NPCs (4×1 grid, 116×126 cells)
+for (const nName of ["npc_belgrano_fan", "npc_feminist", "npc_peronist", "npc_trapito", "npc_vecina"]) {
+  loadSprite(nName, `assets/${nName}.png`, {
+    sliceX: 4, sliceY: 1,
+    anims: {
+      walk: { from: 0, to: 3, speed: 6, loop: true },
+    },
+  });
+}
+
+// Pickups (4×1 grid, 48×48 cells)
+for (const pName of ["pickup_empanada", "pickup_mate", "pickup_fernet", "pickup_choripan"]) {
+  loadSprite(pName, `assets/${pName}.png`, {
+    sliceX: 4, sliceY: 1,
+    anims: {
+      idle: { from: 0, to: 3, speed: 3, loop: true },
+    },
+  });
+}
 
 // ── Music manager ─────────────────────────────────────────────────────────────
 const Music = (() => {

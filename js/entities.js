@@ -565,10 +565,10 @@ function spawnPlayer(idx) {
   const useSprite = !!cfg.sprite;
   const p = add([
     useSprite ? sprite(cfg.sprite) : rect(28, 48),
-    useSprite ? scale(0.35) : scale(1),
+    useSprite ? scale(48 / 126) : scale(1),
     pos(cfg.startX, startY),
     anchor("bot"),           // pos = feet centre; correct for depth sorting
-    color(...cfg.col),
+    useSprite ? color(255, 255, 255) : color(...cfg.col),
     z(300),
     {
       cfg,
@@ -600,14 +600,14 @@ function updatePlayerMovement(p, bounds) {
   p.hurtTimer       = Math.max(0, p.hurtTimer       - dt());
   p.specialCooldown = Math.max(0, p.specialCooldown - dt());
 
-  // Colour tint: hurt = red flash, weapon held = weapon colour, normal = neutral
+  // Colour tint: hurt = red flash, weapon held = weapon colour, normal = neutral/white
   if (p.hurtTimer > 0) {
     p.color = rgb(...cfg.hurtCol);
   } else if (p.heldWeapon) {
     const d = PICKUP_DEFS[p.heldWeapon.type];
     p.color = rgb(...d.col);   // TODO: show held item as a separate sprite layer
   } else {
-    p.color = rgb(...cfg.col);
+    p.color = cfg.sprite ? rgb(255, 255, 255) : rgb(...cfg.col);
   }
 
   // Flip sprite to face movement direction
@@ -700,9 +700,11 @@ function updateEnemy(e, target, onAttack, bounds) {
   e.attackCooldown = Math.max(0, e.attackCooldown - dt());
   e.tauntCooldown  = Math.max(0, e.tauntCooldown  - dt());
 
-  // Colour flash when hurt — brighter version of base colour
+  // Colour flash when hurt
   const dc = e.def.col;
-  if (!e.def.sprite) {
+  if (e.def.sprite) {
+    e.color = e.hurtTimer > 0 ? rgb(255, 120, 120) : rgb(255, 255, 255);
+  } else {
     e.color = e.hurtTimer > 0
       ? rgb(Math.min(255, dc[0]+90), Math.min(255, dc[1]+90), Math.min(255, dc[2]+90))
       : rgb(...dc);
@@ -913,8 +915,9 @@ function spawnPickup(type, x, y) {
     },
   ]);
 
+  if (useSprite) pk.play("idle");
+
   // Tiny label above the pickup
-  // TODO: Replace with a sprite icon once assets exist
   add([
     text(def.label, { size: 7 }),
     pos(x - def.w / 2, y - def.h - 14),
