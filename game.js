@@ -1094,20 +1094,27 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
   });
 
   // ── Online: Guest sends input + applies host state ────────────────────────
+  // Helper: read input from keyboard OR touch gamepad (.active class on buttons)
+  // Needed because mobile synthetic KeyboardEvents may not reach Kaplay's isKeyDown
+  const _btn = (id) => document.getElementById(id)?.classList.contains("active") || false;
+  function getGuestInput() {
+    const cfg = PLAYER_CONFIGS[0];
+    return {
+      left:    isKeyDown(cfg.keys.left)    || _btn("btn-left"),
+      right:   isKeyDown(cfg.keys.right)   || _btn("btn-right"),
+      up:      isKeyDown(cfg.keys.up)      || _btn("btn-up"),
+      down:    isKeyDown(cfg.keys.down)    || _btn("btn-down"),
+      punch:   isKeyDown(cfg.keys.punch)   || _btn("btn-punch"),
+      kick:    isKeyDown(cfg.keys.kick)    || _btn("btn-kick"),
+      special: isKeyDown(cfg.keys.special) || _btn("btn-special"),
+    };
+  }
+
   onUpdate(() => {
     if (!online || isHost) return;
 
-    // Send local input to host (guest uses P1 keys on their device)
-    const cfg = PLAYER_CONFIGS[0];
-    sendGuestInput({
-      left:    isKeyDown(cfg.keys.left),
-      right:   isKeyDown(cfg.keys.right),
-      up:      isKeyDown(cfg.keys.up),
-      down:    isKeyDown(cfg.keys.down),
-      punch:   isKeyDown(cfg.keys.punch),
-      kick:    isKeyDown(cfg.keys.kick),
-      special: isKeyDown(cfg.keys.special),
-    });
+    // Send local input to host
+    sendGuestInput(getGuestInput());
 
     // Apply latest state snapshot from host
     const st = MP.lastState;
