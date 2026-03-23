@@ -249,58 +249,47 @@ scene("title", () => {
     { label: "1 JUGADOR",           desc: "Jugás solo",                           numPlayers: 1, botEnabled: false, online: false, join: false },
     { label: "1P + COMPAÑERO IA",   desc: "Un compañero controlado por la IA",    numPlayers: 2, botEnabled: true,  online: false, join: false },
     { label: "2P MISMO DISPOSITIVO",desc: "Dos jugadores, un teclado (P2: IJKL)", numPlayers: 2, botEnabled: false, online: false, join: false },
-    { label: "CREAR SALA ONLINE",   desc: "Creá una sala y compartí el código",    numPlayers: 2, botEnabled: false, online: true,  join: false },
-    { label: "UNIRSE A SALA",       desc: "Ingresá un código para unirte",         numPlayers: 2, botEnabled: false, online: true,  join: true  },
+    { label: "CREAR SALA ONLINE",   desc: "Creá una sala y compartí el código",   numPlayers: 2, botEnabled: false, online: true,  join: false },
+    { label: "UNIRSE A SALA",       desc: "Ingresá un código para unirte",        numPlayers: 2, botEnabled: false, online: true,  join: true  },
   ];
 
-  // Mode labels (below level list, vertical with cursor — same style as level select)
-  const modeStartY = listStartY + LEVELS.length * rowH + 18;
-  const modeRowH = 16;
-  const modeObjs = [];
+  // Horizontal mode picker — "◀ MODE NAME ▶" with description below
+  const modeY = listStartY + LEVELS.length * rowH + 16;
   const isMobile = window.matchMedia("(pointer: coarse)").matches;
 
-  // "MODO" header
-  add([text("MODO", { size: 9 }),
-       pos(cx, modeStartY - 10), anchor("center"),
-       color(100, 100, 110), fixed(), z(10)]);
+  // Mode label (updated each frame)
+  const modeLabelObj = add([
+    text("", { size: 11, align: "center" }),
+    pos(cx, modeY), anchor("center"),
+    color(255, 245, 120), fixed(), z(10),
+  ]);
 
-  MODES.forEach((m, i) => {
-    const y = modeStartY + i * modeRowH;
+  // Left/right arrows (always visible, clickable)
+  const arrowL = add([
+    text("\u25c0", { size: 14 }),
+    pos(cx - 120, modeY), anchor("center"),
+    color(255, 215, 0), fixed(), z(10), area(),
+  ]);
+  const arrowR = add([
+    text("\u25b6", { size: 14 }),
+    pos(cx + 120, modeY), anchor("center"),
+    color(255, 215, 0), fixed(), z(10), area(),
+  ]);
+  arrowL.onClick(() => { selectedMode = (selectedMode - 1 + MODES.length) % MODES.length; autoStartTimer = 10; });
+  arrowR.onClick(() => { selectedMode = (selectedMode + 1) % MODES.length; autoStartTimer = 10; });
 
-    const cursor = add([
-      text("\u25b6", { size: 9 }),
-      pos(cx - 110, y), anchor("center"),
-      color(255, 215, 0), fixed(), z(10),
-    ]);
-
-    const lbl = add([
-      text(m.label, { size: 9, align: "left" }),
-      pos(cx - 96, y), anchor("left"),
-      color(140, 135, 120), fixed(), z(10),
-    ]);
-
-    // Touch/click hit area
-    const hit = add([
-      rect(230, modeRowH), pos(cx - 115, y - modeRowH / 2), anchor("topleft"),
-      area(), color(0, 0, 0), opacity(0.01), fixed(), z(9),
-    ]);
-    hit.onClick(() => { selectedMode = i; autoStartTimer = 10; });
-
-    modeObjs.push({ cursor, label: lbl });
-  });
-
-  // Description text (updates per frame based on selectedMode)
+  // Description line
   const modeDescLabel = add([
     text("", { size: 8, align: "center", width: VIEW_W - 30 }),
-    pos(cx, modeStartY + MODES.length * modeRowH + 4), anchor("center"),
-    color(120, 150, 120), fixed(), z(10),
+    pos(cx, modeY + 16), anchor("center"),
+    color(130, 160, 130), fixed(), z(10),
   ]);
 
   // Controls prompt (flashing)
   const promptMsg = isMobile
-    ? "[ START ]  para jugar"
-    : "[ ENTER ]  Confirmar";
-  const promptY = modeStartY + MODES.length * modeRowH + 20;
+    ? "[ START ]  para jugar      [ < > ]  modo"
+    : "[ ENTER ]  Confirmar      [ < > ]  Modo";
+  const promptY = modeY + 34;
   const prompt = add([
     text(promptMsg, { size: 11, align: "center", width: VIEW_W - 20 }),
     pos(cx, promptY), anchor("center"),
@@ -347,7 +336,7 @@ scene("title", () => {
 
   // ── Update cursor visibility + timer each frame ────────────────────────────
   onUpdate(() => {
-    // Refresh level cursor and dimming each frame
+    // Refresh level cursor
     levelObjs.forEach(({ cursor, label }, i) => {
       const selected = i === selectedLevel;
       cursor.opacity = selected ? 1 : 0;
@@ -355,14 +344,13 @@ scene("title", () => {
       else          { label.color.r = 140; label.color.g = 135; label.color.b = 120; }
     });
 
-    // Refresh mode cursor and labels
-    modeObjs.forEach(({ cursor, label }, i) => {
-      const selected = i === selectedMode;
-      cursor.opacity = selected ? 1 : 0;
-      if (selected) { label.color.r = 255; label.color.g = 245; label.color.b = 120; }
-      else          { label.color.r = 140; label.color.g = 135; label.color.b = 120; }
-    });
+    // Refresh horizontal mode picker
+    modeLabelObj.text = MODES[selectedMode].label;
     modeDescLabel.text = MODES[selectedMode].desc;
+    // Pulse arrows
+    const aPulse = 0.6 + 0.4 * Math.sin(time() * 4);
+    arrowL.opacity = aPulse;
+    arrowR.opacity = aPulse;
 
     // Auto-start countdown (paused during online waiting)
     if (!onlineWaiting) {
@@ -379,29 +367,23 @@ scene("title", () => {
   });
 
   // ── Input ──────────────────────────────────────────────────────────────────
-  // Two columns: "level" (left) and "mode" (right). Tab or left/right switches.
-  let menuFocus = "level"; // "level" or "mode"
+  // Up/down = level select, Left/right = mode cycle
   const resetTimer = () => { autoStartTimer = 10; };
 
-  const navUp = () => {
-    resetTimer();
-    if (menuFocus === "level") selectedLevel = Math.max(0, selectedLevel - 1);
-    else selectedMode = Math.max(0, selectedMode - 1);
-  };
-  const navDown = () => {
-    resetTimer();
-    if (menuFocus === "level") selectedLevel = Math.min(LEVELS.length - 1, selectedLevel + 1);
-    else selectedMode = Math.min(MODES.length - 1, selectedMode + 1);
-  };
-  const switchFocus = () => { menuFocus = menuFocus === "level" ? "mode" : "level"; resetTimer(); };
+  const navUp   = () => { selectedLevel = Math.max(0, selectedLevel - 1);              resetTimer(); };
+  const navDown = () => { selectedLevel = Math.min(LEVELS.length - 1, selectedLevel + 1); resetTimer(); };
+  const navModeLeft  = () => { selectedMode = (selectedMode - 1 + MODES.length) % MODES.length; resetTimer(); };
+  const navModeRight = () => { selectedMode = (selectedMode + 1) % MODES.length;               resetTimer(); };
 
   onKeyPress("arrowup",    navUp);
   onKeyPress("w",          navUp);
   onKeyPress("arrowdown",  navDown);
   onKeyPress("s",          navDown);
-  onKeyPress("arrowleft",  switchFocus);
-  onKeyPress("arrowright", switchFocus);
-  onKeyPress("tab",        switchFocus);
+  onKeyPress("arrowleft",  navModeLeft);
+  onKeyPress("a",          navModeLeft);
+  onKeyPress("arrowright", navModeRight);
+  onKeyPress("d",          navModeRight);
+  onKeyPress("tab",        navModeRight);
   onKeyPress("enter", () => {
     if (onlineWaiting) return;
     const m = MODES[selectedMode];
