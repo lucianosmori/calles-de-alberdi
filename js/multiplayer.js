@@ -13,27 +13,30 @@
 let _supabaseUrl  = window.__SUPABASE_URL  || "";
 let _supabaseAnon = window.__SUPABASE_ANON || "";
 let _sb = null;
-let _configFetched = false;
+let _configPromise = null;
 
 /**
  * Fetch config from Vercel serverless endpoint.
- * Called once; silently falls back if endpoint doesn't exist (local dev).
+ * Returns same promise if already in-flight (prevents race when multiple
+ * callers await initSupabase before the first fetch resolves).
  */
 async function _fetchConfig() {
-  if (_configFetched) return;
-  _configFetched = true;
-  // Skip fetch if we already have values from window globals
-  if (_supabaseUrl && _supabaseAnon) return;
-  try {
-    const res = await fetch("/api/config");
-    if (res.ok) {
-      const cfg = await res.json();
-      _supabaseUrl  = cfg.supabaseUrl  || _supabaseUrl;
-      _supabaseAnon = cfg.supabaseAnon || _supabaseAnon;
+  if (_configPromise) return _configPromise;
+  _configPromise = (async () => {
+    // Skip fetch if we already have values from window globals
+    if (_supabaseUrl && _supabaseAnon) return;
+    try {
+      const res = await fetch("/api/config");
+      if (res.ok) {
+        const cfg = await res.json();
+        _supabaseUrl  = cfg.supabaseUrl  || _supabaseUrl;
+        _supabaseAnon = cfg.supabaseAnon || _supabaseAnon;
+      }
+    } catch (_) {
+      // /api/config not available (local dev without env-config.js) — that's fine
     }
-  } catch (_) {
-    // /api/config not available (local dev without env-config.js) — that's fine
-  }
+  })();
+  return _configPromise;
 }
 
 /**
