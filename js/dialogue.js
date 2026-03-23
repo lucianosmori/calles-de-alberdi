@@ -51,6 +51,7 @@ function showDialogue(lines, onComplete) {
   _dlgOnComplete = onComplete || null;
   _dlgSlideIn    = 0;
   _voiceLastIdx  = -1;
+  document.getElementById("gamepad")?.classList.add("dialogue-active");
 }
 
 /** True while dialogue is on screen — use to suppress gameplay input. */
@@ -164,6 +165,7 @@ function updateDialogue() {
       _dlgAutoTimer = 0;
       if (_dlgLineIdx >= _dlgLines.length) {
         _dlgActive = false;
+        document.getElementById("gamepad")?.classList.remove("dialogue-active");
         if (_dlgOnComplete) _dlgOnComplete();
       } else {
         _dlgCharIdx = 0;

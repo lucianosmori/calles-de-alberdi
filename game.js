@@ -127,7 +127,7 @@ scene("title", () => {
        pos(cx, 60), anchor("center"),
        color(255, 200, 50), fixed(), z(10)]);
   add([text("Barrio Cordobés", { size: 14, align: "center" }),
-       pos(cx, 90), anchor("center"),
+       pos(cx, _isMobile ? 100 : 90), anchor("center"),
        color(160, 200, 220), fixed(), z(10)]);
 
   // ── Level list (drawn each frame) ─────────────────────────────────────────
