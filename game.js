@@ -411,7 +411,7 @@ scene("title", () => {
     onKeyPress(k, () => {
       if (!joiningRoom || joinCode.length >= 4) return;
       joinCode += k.toUpperCase();
-      onlineStatus = "Código: " + joinCode + (joinCode.length < 4 ? "_" : "  [ENTER]");
+      onlineStatus = "Código: " + joinCode + (joinCode.length < 4 ? "_" : "  (ENTER)");
     });
   }
   onKeyPress("backspace", () => {
