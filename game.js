@@ -186,7 +186,7 @@ scene("title", () => {
 
   // ── Level select state ──────────────────────────────────────────────────────
   let selectedLevel  = 0;
-  let autoStartTimer = 7;
+  let autoStartTimer = 10;
 
   // Background
   add([rect(VIEW_W, VIEW_H), pos(0, 0), color(10, 12, 22), fixed(), z(0)]);
@@ -235,7 +235,7 @@ scene("title", () => {
     ]);
     hitRect.onClick(() => {
       selectedLevel  = i;
-      autoStartTimer = 7;
+      autoStartTimer = 10;
     });
 
     levelObjs.push({ cursor, label });
@@ -246,40 +246,64 @@ scene("title", () => {
   let onlineWaiting = false;   // true while host waits for guest (or guest connects)
   let onlineStatus  = "";      // status text shown during online flow
   const MODES = [
-    { label: "1 JUGADOR",           numPlayers: 1, botEnabled: false, online: false },
-    { label: "1P + COMPAÑERO IA",   numPlayers: 2, botEnabled: true,  online: false },
-    { label: "2 JUGADORES LOCAL",   numPlayers: 2, botEnabled: false, online: false },
-    { label: "ONLINE 2P",           numPlayers: 2, botEnabled: false, online: true  },
+    { label: "1 JUGADOR",           desc: "Jugás solo",                           numPlayers: 1, botEnabled: false, online: false, join: false },
+    { label: "1P + COMPAÑERO IA",   desc: "Un compañero controlado por la IA",    numPlayers: 2, botEnabled: true,  online: false, join: false },
+    { label: "2P MISMO DISPOSITIVO",desc: "Dos jugadores, un teclado (P2: IJKL)", numPlayers: 2, botEnabled: false, online: false, join: false },
+    { label: "CREAR SALA ONLINE",   desc: "Creá una sala y compartí el código",    numPlayers: 2, botEnabled: false, online: true,  join: false },
+    { label: "UNIRSE A SALA",       desc: "Ingresá un código para unirte",         numPlayers: 2, botEnabled: false, online: true,  join: true  },
   ];
 
-  // Mode labels (below level list)
-  const modeStartY = listStartY + LEVELS.length * rowH + 14;
+  // Mode labels (below level list, vertical with cursor — same style as level select)
+  const modeStartY = listStartY + LEVELS.length * rowH + 18;
+  const modeRowH = 16;
   const modeObjs = [];
   const isMobile = window.matchMedia("(pointer: coarse)").matches;
 
+  // "MODO" header
+  add([text("MODO", { size: 9 }),
+       pos(cx, modeStartY - 10), anchor("center"),
+       color(100, 100, 110), fixed(), z(10)]);
+
   MODES.forEach((m, i) => {
-    const y = modeStartY + i * 14;
+    const y = modeStartY + i * modeRowH;
+
+    const cursor = add([
+      text("\u25b6", { size: 9 }),
+      pos(cx - 110, y), anchor("center"),
+      color(255, 215, 0), fixed(), z(10),
+    ]);
+
     const lbl = add([
-      text(m.label, { size: 10, align: "center" }),
-      pos(cx, y), anchor("center"),
+      text(m.label, { size: 9, align: "left" }),
+      pos(cx - 96, y), anchor("left"),
       color(140, 135, 120), fixed(), z(10),
     ]);
+
     // Touch/click hit area
     const hit = add([
-      rect(200, 14), pos(cx - 100, y - 7), anchor("topleft"),
+      rect(230, modeRowH), pos(cx - 115, y - modeRowH / 2), anchor("topleft"),
       area(), color(0, 0, 0), opacity(0.01), fixed(), z(9),
     ]);
-    hit.onClick(() => { selectedMode = i; autoStartTimer = 7; });
-    modeObjs.push(lbl);
+    hit.onClick(() => { selectedMode = i; autoStartTimer = 10; });
+
+    modeObjs.push({ cursor, label: lbl });
   });
+
+  // Description text (updates per frame based on selectedMode)
+  const modeDescLabel = add([
+    text("", { size: 8, align: "center", width: VIEW_W - 30 }),
+    pos(cx, modeStartY + MODES.length * modeRowH + 4), anchor("center"),
+    color(120, 150, 120), fixed(), z(10),
+  ]);
 
   // Controls prompt (flashing)
   const promptMsg = isMobile
     ? "[ START ]  para jugar"
-    : "[ ENTER ]  Confirmar       [ < > ]  Modo";
+    : "[ ENTER ]  Confirmar";
+  const promptY = modeStartY + MODES.length * modeRowH + 20;
   const prompt = add([
     text(promptMsg, { size: 11, align: "center", width: VIEW_W - 20 }),
-    pos(cx, modeStartY + MODES.length * 14 + 8), anchor("center"),
+    pos(cx, promptY), anchor("center"),
     color(255, 245, 120), fixed(), z(10),
   ]);
   let flashT = 0;
@@ -288,30 +312,15 @@ scene("title", () => {
     prompt.opacity = 0.5 + 0.5 * Math.sin(flashT * 3.5);
   });
 
-  // Auto-start timer label (between prompt and leaderboard)
+  // Auto-start timer label
   const timerLabel = add([
     text("", { size: 9, align: "center" }),
-    pos(cx, modeStartY + MODES.length * 14 + 24), anchor("center"),
+    pos(cx, promptY + 16), anchor("center"),
     color(160, 155, 130), fixed(), z(10),
   ]);
 
-  // Controls legend (desktop only — mobile has gamepad)
-  if (!isMobile) {
-    const legendY = modeStartY + MODES.length * 14 + 44;
-    add([text("P1: WASD Move   Z Punch   X Kick   Q Special",
-              { size: 8, align: "center" }),
-         pos(cx, legendY), anchor("center"),
-         color(130, 180, 130), fixed(), z(10)]);
-    add([text("P2: IJKL Move   U Punch   O Kick   P Special",
-              { size: 8, align: "center" }),
-         pos(cx, legendY + 14), anchor("center"),
-         color(130, 180, 220), fixed(), z(10)]);
-  }
-
   // ── Leaderboard on title ──────────────────────────────────────────────────
-  const lbY = isMobile
-    ? modeStartY + MODES.length * 14 + 44
-    : modeStartY + MODES.length * 14 + 68;
+  const lbY = promptY + 34;
   const lbText = add([
     text("", { size: 9, align: "center", width: VIEW_W - 20 }),
     pos(cx, lbY), anchor("center"),
@@ -346,12 +355,14 @@ scene("title", () => {
       else          { label.color.r = 140; label.color.g = 135; label.color.b = 120; }
     });
 
-    // Refresh mode labels
-    modeObjs.forEach((lbl, i) => {
+    // Refresh mode cursor and labels
+    modeObjs.forEach(({ cursor, label }, i) => {
       const selected = i === selectedMode;
-      if (selected) { lbl.color.r = 255; lbl.color.g = 245; lbl.color.b = 120; }
-      else          { lbl.color.r = 140; lbl.color.g = 135; lbl.color.b = 120; }
+      cursor.opacity = selected ? 1 : 0;
+      if (selected) { label.color.r = 255; label.color.g = 245; label.color.b = 120; }
+      else          { label.color.r = 140; label.color.g = 135; label.color.b = 120; }
     });
+    modeDescLabel.text = MODES[selectedMode].desc;
 
     // Auto-start countdown (paused during online waiting)
     if (!onlineWaiting) {
@@ -368,25 +379,35 @@ scene("title", () => {
   });
 
   // ── Input ──────────────────────────────────────────────────────────────────
-  const resetTimer = () => { autoStartTimer = 7; };
+  // Two columns: "level" (left) and "mode" (right). Tab or left/right switches.
+  let menuFocus = "level"; // "level" or "mode"
+  const resetTimer = () => { autoStartTimer = 10; };
 
-  const navUp   = () => { selectedLevel = Math.max(0, selectedLevel - 1);              resetTimer(); };
-  const navDown = () => { selectedLevel = Math.min(LEVELS.length - 1, selectedLevel + 1); resetTimer(); };
-  const navModeLeft  = () => { selectedMode = Math.max(0, selectedMode - 1);            resetTimer(); };
-  const navModeRight = () => { selectedMode = Math.min(MODES.length - 1, selectedMode + 1); resetTimer(); };
-  onKeyPress("arrowup",   navUp);
-  onKeyPress("w",         navUp);
-  onKeyPress("arrowdown", navDown);
-  onKeyPress("s",         navDown);
-  onKeyPress("arrowleft",  navModeLeft);
-  onKeyPress("a",          navModeLeft);
-  onKeyPress("arrowright", navModeRight);
-  onKeyPress("d",          navModeRight);
-  onKeyPress("tab", navModeRight);
+  const navUp = () => {
+    resetTimer();
+    if (menuFocus === "level") selectedLevel = Math.max(0, selectedLevel - 1);
+    else selectedMode = Math.max(0, selectedMode - 1);
+  };
+  const navDown = () => {
+    resetTimer();
+    if (menuFocus === "level") selectedLevel = Math.min(LEVELS.length - 1, selectedLevel + 1);
+    else selectedMode = Math.min(MODES.length - 1, selectedMode + 1);
+  };
+  const switchFocus = () => { menuFocus = menuFocus === "level" ? "mode" : "level"; resetTimer(); };
+
+  onKeyPress("arrowup",    navUp);
+  onKeyPress("w",          navUp);
+  onKeyPress("arrowdown",  navDown);
+  onKeyPress("s",          navDown);
+  onKeyPress("arrowleft",  switchFocus);
+  onKeyPress("arrowright", switchFocus);
+  onKeyPress("tab",        switchFocus);
   onKeyPress("enter", () => {
-    if (onlineWaiting) return; // already in online flow
+    if (onlineWaiting) return;
     const m = MODES[selectedMode];
-    if (m.online) {
+    if (m.online && m.join) {
+      startOnlineJoin();
+    } else if (m.online) {
       startOnlineHost();
     } else {
       go("game", { numPlayers: m.numPlayers, botEnabled: m.botEnabled, levelIdx: selectedLevel });
@@ -421,6 +442,15 @@ scene("title", () => {
       });
     };
     window.addEventListener("mp-guest-joined", onJoined);
+  }
+
+  function startOnlineJoin() {
+    // Prompt for room code (simple browser prompt — works on mobile + desktop)
+    const code = prompt("Ingresá el código de sala (4 letras):");
+    if (!code || code.trim().length < 4) {
+      return; // cancelled or invalid
+    }
+    startOnlineGuest(code.trim().toUpperCase());
   }
 
   async function startOnlineGuest(roomCode) {
