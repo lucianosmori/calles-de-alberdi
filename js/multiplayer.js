@@ -159,7 +159,7 @@ async function createRoom() {
   if (!user) return { error: "Not authenticated" };
 
   // Clean up own stale rooms first (frees rate limit quota)
-  await sb.rpc("cleanup_my_stale_rooms").catch(() => {});
+  try { await sb.rpc("cleanup_my_stale_rooms"); } catch (_) {}
 
   const roomId = generateRoomCode();
   const { error } = await sb
