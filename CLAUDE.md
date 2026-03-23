@@ -6,18 +6,39 @@
 
 ```
 index.html          — Entry point, canvas, virtual gamepad (touch controls)
-game.js             — Scenes (title/game/gameover/victory), combat, wave system
-js/constants.js     — All tuning values, level defs, enemy/NPC/pickup stats
-js/entities.js      — Factory functions (player, enemy, NPC, pickup), AI, HUD, snow
-js/multiplayer.js   — Multiplayer & leaderboard stubs (Supabase — TODO)
-assets/             — Sprites, sounds (none yet — all placeholder rects)
+game.js             — Scenes (title/game/gameover/victory), combat, wave/boss system, camera
+js/constants.js     — All tuning values, level defs, enemy/NPC/pickup stats, dialogue content
+js/entities.js      — Factory functions (player, enemy, NPC, pickup), AI, HUD, level backgrounds
+js/dialogue.js      — Undertale-style dialogue system (typewriter, portraits, voice beeps)
+js/multiplayer.js   — Supabase client, leaderboard, room functions
+api/config.js       — Vercel serverless function (serves Supabase creds from env vars)
+vercel.json         — Vercel config (static site, no build step)
+env-config.js       — Local dev Supabase config (gitignored)
+assets/             — Sprites, sounds (mostly placeholder)
 tests/              — Playwright E2E tests
-package.json        — Dev deps: @playwright/test, serve
-playwright.config.js — Test runner config
 ```
 
-**Load order:** index.html → Kaplay CDN → constants.js → entities.js → multiplayer.js → game.js
-**No build step** — static site, deployed directly to GitHub Pages.
+**Load order:** index.html → Kaplay CDN → constants.js → entities.js → dialogue.js → multiplayer.js → game.js
+
+## Running Locally
+
+```bash
+npx serve -l 3000 .
+```
+Open http://localhost:3000. No build step needed.
+
+## Deploying to Vercel
+
+The site is live at **https://calles-de-alberdi.vercel.app**.
+
+```bash
+npx vercel --prod          # Deploy current directory to production
+```
+
+- `api/config.js` is a serverless function (CommonJS `module.exports`) that serves Supabase creds
+- Env vars set in Vercel dashboard: `SUPABASE_URL`, `SUPABASE_ANON`
+- Client fetches `/api/config` in production, uses `env-config.js` globals in local dev
+- Production branch is `main` (GitHub auto-deploy), but CLI deploys bypass branch setting
 
 ## Architecture
 
@@ -27,50 +48,53 @@ title → game → gameover → retry/title
                 └→ victory → replay/title
 ```
 
+### Camera System
+- Belt-scroll camera with dead zones, smooth lerp, vertical depth tracking
+- Section locking: invisible walls drop when wave cleared, GO arrow indicator
+- Screen-space HUD/dialogue via `pushTranslate(cam.x - VIEW_W/2, cam.y - VIEW_H/2)`
+
+### Dialogue System (`js/dialogue.js`)
+- Typewriter text, character portraits with boss jitter, Web Audio voice beeps
+- Auto-advance: 4s timer (3s for single-line), player can tap to skip
+- Hides mobile gamepad via `.dialogue-active` CSS class during dialogue
+- 5 voice presets: boss_low, boss_mid, npc_high, npc_mid, default
+
 ### Entity System
-- **Players** (1-2): WASD/IJKL movement, Z/X/Q or U/O/P attacks. Spawned via `spawnPlayer(idx)`.
-- **Enemies** (3 types + 4 bosses): AI targets nearest player, pathfinds, attacks in range. Spawned via `spawnEnemy(type, x, y)`.
-- **NPCs** (5 archetypes): Wander, flee danger, react to fights with speech bubbles.
-- **Pickups** (2 health + 1 weapon + 1 dual): Dropped by enemies (28% chance) or pre-spawned.
+- **Players** (1-2): WASD/IJKL movement, Z/X/Q or U/O/P attacks. `spawnPlayer(idx)`
+- **Enemies** (3 types + 4 bosses): AI targets nearest player. `spawnEnemy(type, x, y)`
+- **NPCs** (5 archetypes): Wander, flee, react with speech bubbles. `spawnNPC(type, x, y)`
+- **Pickups**: Dropped by enemies (28%) or pre-spawned. `spawnPickup(type, x, y)`
 
 ### Levels (4 total)
-1. **Calle Colón** — "La Comisaría" — Police station at Colón y Santa Fe. NPCs: belgrano_fan, feminist, peronist, trapito. Boss: El Comisario.
-2. **Barrio Alberdi** — "El Barrio" — Placeholder. Boss: El Barra Brava.
-3. **La Cañada** — "El Paseo" — Placeholder. Boss: El Puntero.
-4. **Centro** — "La Final" — Placeholder. Boss: El Intendente.
+1. **Calle Colón** — "La Comisaría" — 3 sections, 3 waves. Boss: El Comisario
+2. **Barrio Alberdi** — "El Barrio" — 3 sections, 3 waves. Boss: El Barra Brava
+3. **La Cañada** — "El Paseo" — 4 sections, 4 waves. Boss: El Puntero
+4. **Centro** — "La Final" — 4 sections, 4 waves. Boss: El Intendente
 
-Each level: 3 enemy waves → boss fight → next level.
+Each level: N enemy waves → boss dialogue → boss fight → next level.
 
-### Enemy Types
-- **Punguista** — street thief, fast, low HP
-- **Patotero** — gang brawler, slow, high HP
-- **Naranjita** — informal parking guard, medium speed, low damage
-
-### NPC Archetypes
-- **belgrano_fan** — Club Belgrano supporter
-- **feminist** — activist ("¡Ni una menos!")
-- **peronist** — Peronist party supporter
-- **trapito** — street car guard ("¡Te lo cuido, jefe!")
-- **vecina** — neighbourhood resident
-
-### Combat
-- Punch (68px range, 12 dmg), Kick (90px range, 22 dmg), Special (115px AoE, 35 dmg, costs 20 HP)
-- Weapons boost damage/range, break after N uses
-- Hit → 0.3s enemy stun, 22px knockback; Player hurt → 0.45s iframes
-
-### Pickups
-- **Empanada** — heals 20 HP
-- **Mate** — heals 15 HP
-- **Choripán** — heals 25 HP
-- **Fernet** — weapon: 22 dmg, 3 uses
+### Block Type System (level backgrounds)
+7 types in `js/constants.js` blocks arrays: `store`, `crosswalk`, `lot`, `alley`, `wall`, `park`, `special`
+Rendered by `drawLevelBackground()` in `js/entities.js`.
 
 ## Key Conventions
 
 - **No magic numbers** — all tuning in `js/constants.js`
 - **Factory pattern** — entities created via `spawn*()` functions in `js/entities.js`
-- **Placeholder rects** — all entities use `rect()` + `color()` (no sprites yet)
-- **Canvas-dispatched events** — mobile gamepad fires synthetic KeyboardEvents on the canvas element
-- **Spanish UI** — all player-facing text in Spanish (Argentine dialect)
+- **Placeholder rects** — most entities use `rect()` + `color()` (sprites in progress)
+- **Canvas-dispatched events** — mobile gamepad fires synthetic KeyboardEvents on canvas
+- **Spanish UI** — all player-facing text in Argentine Spanish dialect
+- **No auto-servers** — don't start `npx serve` automatically; user runs it when needed
+
+## Debug Mode
+
+| Key | Action |
+|-----|--------|
+| `}` | Skip wave (kill all enemies) |
+| `-` | Skip level |
+| `B` | Skip to boss (guarded: won't fire during boss phase) |
+| `G` | Toggle god mode |
+| `T` | Toggle auto-walk right |
 
 ## Player Controls
 
@@ -85,37 +109,21 @@ Each level: 3 enemy waves → boss fight → next level.
 ## What's Done
 
 - Full game loop: title → 4 levels with waves/bosses → victory
+- Belt-scroll camera with section locking and GO arrow
+- Dialogue system (typewriter, portraits, voice beeps, auto-advance)
 - Player movement, combat, weapons, special attacks
-- Enemy AI (pathfinding, attacking, taunting in Spanish)
-- NPC system (wandering, fleeing, reacting with speech bubbles)
-- Pickup system (health items, weapons with durability)
-- HUD (HP bars, wave counter, boss HP, controls legend)
-- Snow particle system
-- Mobile virtual gamepad with landscape lock
-- Level select with auto-start timer
-- Mobile fullscreen layout with camera follow
-- All UI text in Spanish
-- Supabase + QR code CDN loaded (multiplayer prep)
+- Enemy AI, NPC system, pickup system
+- HUD (HP bars, wave counter, boss HP, score, combo)
+- Level 1 full block backgrounds, levels 2-4 block definitions
+- Rain/overcast weather system
+- Mobile virtual gamepad (hides during dialogue)
+- Supabase backend (anon auth, rooms, leaderboard, RLS)
+- Vercel deployment with serverless config endpoint
+- Debug mode shortcuts
 
-## What's Missing / TODO
+## TODO
 
-### Sprites (All)
-- No sprites exist yet — everything uses colored rectangles
-- Need: player sprites, 3 enemy types, 4 bosses, 5 NPC types, 4 pickups
-
-### Level 1 Background
-- Comisaría Central at corner of Colón y Santa Fe, Córdoba
-- Police station building as main storefront feature
-
-### Levels 2-4
-- Placeholder names and storefronts — design TBD
-
-### Audio
-- No sound effects or music
-
-### Features
-- Multiplayer via QR code (Supabase integration)
-- Online leaderboard
-- Combo system
-- Character select
-- Responsive layout fix (desktop vs mobile)
+- **Sprites** — generate via Pollinations MCP (player, enemies, bosses, NPCs, pickups)
+- **Audio** — SFX and music (Web Audio or generated)
+- **Multiplayer** — Supabase Realtime 2P co-op
+- **Polish** — combo system, character select, responsive tweaks
