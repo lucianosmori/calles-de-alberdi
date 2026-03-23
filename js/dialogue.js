@@ -16,6 +16,7 @@ let _dlgOnComplete = null;   // callback when all lines finished
 let _dlgFastHeld  = false;   // player holding advance key
 let _dlgAdvancePressed = false;
 let _dlgSlideIn   = 0;       // 0→1 animation for box entrance
+let _dlgAutoTimer = 0;       // seconds until auto-advance (0 = waiting for typewriter)
 
 // ── Voice state ──────────────────────────────────────────────────────────────
 let _voiceCtx     = null;    // AudioContext (created on first use)
@@ -125,6 +126,7 @@ function updateDialogue() {
     if (_dlgCharIdx >= line.text.length) {
       _dlgCharIdx = line.text.length;
       _dlgDone = true;
+      _dlgAutoTimer = _dlgLines.length === 1 ? 3 : 4;
     }
 
     // Voice beep — one per new visible character (skip spaces/punctuation)
@@ -142,16 +144,24 @@ function updateDialogue() {
     }
   }
 
-  // Handle advance input
-  if (_dlgAdvancePressed) {
-    _dlgAdvancePressed = false;
+  // Auto-advance countdown
+  if (_dlgDone && _dlgAutoTimer > 0) {
+    _dlgAutoTimer -= dt();
+  }
 
+  // Advance: player input OR auto-timer expired
+  const shouldAdvance = _dlgAdvancePressed || (_dlgDone && _dlgAutoTimer <= 0);
+  if (_dlgAdvancePressed) _dlgAdvancePressed = false;
+
+  if (shouldAdvance) {
     if (!_dlgDone) {
       _dlgCharIdx = line.text.length;
       _dlgDone = true;
+      _dlgAutoTimer = _dlgLines.length === 1 ? 3 : 4;
     } else {
       _dlgLineIdx++;
       _voiceLastIdx = -1;
+      _dlgAutoTimer = 0;
       if (_dlgLineIdx >= _dlgLines.length) {
         _dlgActive = false;
         if (_dlgOnComplete) _dlgOnComplete();
@@ -197,7 +207,7 @@ function drawDialogue() {
     width:  VIEW_W + 8,
     height: boxH + 4,
     color:  rgb(10, 10, 18),
-    opacity: 0.90,
+    opacity: 0.97,
   });
 
   // Top accent border
@@ -283,13 +293,12 @@ function drawDialogue() {
     color:  rgb(230, 225, 210),
   });
 
-  // Pulsing advance indicator + hint when line is complete
-  if (_dlgDone) {
-    const alpha = 0.4 + 0.6 * Math.abs(Math.sin(time() * 3));
-    const isMobile = window.matchMedia("(pointer: coarse)").matches;
-    const hint = isMobile ? "Tocá para continuar  \u25bc" : "Enter  \u25bc";
+  // Countdown indicator when line is complete
+  if (_dlgDone && _dlgAutoTimer > 0) {
+    const secs = Math.ceil(_dlgAutoTimer);
+    const alpha = 0.3 + 0.4 * Math.abs(Math.sin(time() * 2));
     drawText({
-      text:    hint,
+      text:    `${secs}`,
       pos:     vec2(VIEW_W - pad - 8, boxY + boxH - pad - 8),
       size:    8,
       anchor:  "right",
