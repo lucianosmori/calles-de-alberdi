@@ -167,6 +167,12 @@
     </div>
   </div>
 
+  <!-- Vercel Analytics (free tier) -->
+  <script>
+    window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+  </script>
+  <script defer src="/_vercel/insights/script.js"></script>
+
   <!-- Engine -->
   <script src="https://unpkg.com/kaplay@3001/dist/kaplay.js"></script>
 
@@ -192,7 +198,9 @@
     if (!window.matchMedia("(pointer: coarse)").matches) return;
     document.getElementById("gamepad").style.display = "block";
 
-    const canvas = document.querySelector("canvas");
+    // Kaplay's canvas is the LAST canvas in the DOM (QR canvas is first)
+    const canvases = document.querySelectorAll("canvas");
+    const canvas = canvases[canvases.length - 1];
     const fire = (key, type) => {
       canvas.dispatchEvent(new KeyboardEvent(type, { key, bubbles: true }));
     };

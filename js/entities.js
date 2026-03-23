@@ -565,10 +565,10 @@ function spawnPlayer(idx) {
   const useSprite = !!cfg.sprite;
   const p = add([
     useSprite ? sprite(cfg.sprite) : rect(28, 48),
-    useSprite ? scale(0.35) : scale(1),
+    useSprite ? scale(48 / 126) : scale(1),
     pos(cfg.startX, startY),
     anchor("bot"),           // pos = feet centre; correct for depth sorting
-    color(...cfg.col),
+    useSprite ? color(255, 255, 255) : color(...cfg.col),
     z(300),
     {
       cfg,
@@ -600,14 +600,14 @@ function updatePlayerMovement(p, bounds) {
   p.hurtTimer       = Math.max(0, p.hurtTimer       - dt());
   p.specialCooldown = Math.max(0, p.specialCooldown - dt());
 
-  // Colour tint: hurt = red flash, weapon held = weapon colour, normal = neutral
+  // Colour tint: hurt = red flash, weapon held = weapon colour, normal = neutral/white
   if (p.hurtTimer > 0) {
     p.color = rgb(...cfg.hurtCol);
   } else if (p.heldWeapon) {
     const d = PICKUP_DEFS[p.heldWeapon.type];
     p.color = rgb(...d.col);   // TODO: show held item as a separate sprite layer
   } else {
-    p.color = rgb(...cfg.col);
+    p.color = cfg.sprite ? rgb(255, 255, 255) : rgb(...cfg.col);
   }
 
   // Flip sprite to face movement direction
@@ -648,6 +648,110 @@ function updatePlayerMovement(p, bounds) {
 
   // Depth sort — z = feet y so characters lower on screen draw in front
   p.z = p.pos.y;
+}
+
+
+// =============================================================================
+// BOT COMPANION AI
+// =============================================================================
+
+/**
+ * AI brain for the bot companion (Player 2 controlled by computer).
+ * Call each frame from onUpdate. The bot uses the same player object as a
+ * human P2 — it just sets position and triggers attacks directly.
+ *
+ * @param {KAPLAYObj} bot — player game object with isBot=true
+ * @param {Array} enemies — live enemy array from game scene
+ * @param {Array} players — all players (bot finds P1 as players[0])
+ * @param {object} bounds — { left, right } from getSectionBounds()
+ * @param {Function} doAttack — attack function from game.js closure
+ */
+function updateBotPlayer(bot, enemies, players, bounds, doAttack) {
+  if (!bot || !bot.exists() || bot.hp <= 0) return;
+
+  // Tick timers (movement is handled here, not by keyboard input)
+  bot.attackTimer     = Math.max(0, bot.attackTimer     - dt());
+  bot.hurtTimer       = Math.max(0, bot.hurtTimer       - dt());
+  bot.specialCooldown = Math.max(0, bot.specialCooldown - dt());
+  if (bot.botAttackCD > 0) bot.botAttackCD -= dt();
+
+  // Color tint (same as updatePlayerMovement)
+  if (bot.hurtTimer > 0) {
+    bot.color = rgb(...bot.cfg.hurtCol);
+  } else {
+    bot.color = bot.cfg.sprite ? rgb(255, 255, 255) : rgb(...bot.cfg.col);
+  }
+  if (bot.cfg.sprite) bot.flipX = (bot.facing < 0);
+  if (bot.cfg.sprite && bot.state !== bot._lastState) {
+    bot.play(bot.state);
+    bot._lastState = bot.state;
+  }
+
+  // Locked during attack or hurt
+  if (bot.attackTimer > 0 || bot.hurtTimer > 0) { bot.z = bot.pos.y; return; }
+
+  // Find nearest living enemy
+  const livingEnemies = enemies.filter(e => e.hp > 0 && e.state !== "dead");
+  let target = null, bestDist = Infinity;
+
+  for (const e of livingEnemies) {
+    const d = bot.pos.dist(e.pos);
+    if (d < bestDist) { bestDist = d; target = e; }
+  }
+
+  let dx = 0, dy = 0;
+
+  if (target && bestDist <= 300) {
+    // Chase enemy
+    dx = target.pos.x - bot.pos.x;
+    dy = target.pos.y - bot.pos.y;
+
+    if (bestDist > BOT_ATTACK_RANGE) {
+      // Move toward enemy
+      const len = Math.sqrt(dx * dx + dy * dy) || 1;
+      bot.pos.x += (dx / len) * BOT_MOVE_SPEED * dt();
+      bot.pos.y += (dy / len) * BOT_MOVE_SPEED * 0.5 * dt();
+      bot.state = "walk";
+    } else {
+      bot.state = "idle";
+    }
+
+    // Face enemy
+    if (dx !== 0) bot.facing = dx > 0 ? 1 : -1;
+
+    // Attack when in range
+    if (bestDist <= BOT_ATTACK_RANGE && bot.botAttackCD <= 0 && bot.attackTimer <= 0) {
+      const type = Math.random() < 0.6 ? "punch" : "kick";
+      doAttack(bot, type);
+      bot.botAttackCD = BOT_ATTACK_COOLDOWN + Math.random() * 0.3;
+    }
+  } else {
+    // No nearby enemies — follow P1
+    const p1 = players[0];
+    if (p1 && p1.exists() && p1.hp > 0) {
+      dx = p1.pos.x - bot.pos.x;
+      dy = p1.pos.y - bot.pos.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > BOT_FOLLOW_DIST) {
+        const len = dist || 1;
+        bot.pos.x += (dx / len) * BOT_MOVE_SPEED * dt();
+        bot.pos.y += (dy / len) * BOT_MOVE_SPEED * 0.5 * dt();
+        bot.state = "walk";
+      } else {
+        bot.state = "idle";
+      }
+      if (dx !== 0) bot.facing = dx > 0 ? 1 : -1;
+    } else {
+      bot.state = "idle";
+    }
+  }
+
+  // Hard clamp to playfield
+  const bLeft  = bounds ? bounds.left  : 20;
+  const bRight = bounds ? bounds.right : SCREEN_W - 20;
+  bot.pos.x = clamp(bot.pos.x, bLeft, bRight);
+  bot.pos.y = clamp(bot.pos.y, GROUND_TOP + 24, GROUND_BOTTOM);
+  bot.z = bot.pos.y;
 }
 
 
@@ -700,9 +804,11 @@ function updateEnemy(e, target, onAttack, bounds) {
   e.attackCooldown = Math.max(0, e.attackCooldown - dt());
   e.tauntCooldown  = Math.max(0, e.tauntCooldown  - dt());
 
-  // Colour flash when hurt — brighter version of base colour
+  // Colour flash when hurt
   const dc = e.def.col;
-  if (!e.def.sprite) {
+  if (e.def.sprite) {
+    e.color = e.hurtTimer > 0 ? rgb(255, 120, 120) : rgb(255, 255, 255);
+  } else {
     e.color = e.hurtTimer > 0
       ? rgb(Math.min(255, dc[0]+90), Math.min(255, dc[1]+90), Math.min(255, dc[2]+90))
       : rgb(...dc);
@@ -913,8 +1019,9 @@ function spawnPickup(type, x, y) {
     },
   ]);
 
+  if (useSprite) pk.play("idle");
+
   // Tiny label above the pickup
-  // TODO: Replace with a sprite icon once assets exist
   add([
     text(def.label, { size: 7 }),
     pos(x - def.w / 2, y - def.h - 14),

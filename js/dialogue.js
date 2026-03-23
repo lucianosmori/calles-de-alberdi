@@ -71,7 +71,9 @@ function initDialogueInput() {
     onKeyRelease(k, () => { _dlgFastHeld = false; });
   });
 
-  const canvas = document.querySelector("canvas");
+  // Use last canvas — Kaplay's game canvas (first is QR overlay canvas)
+  const canvases = document.querySelectorAll("canvas");
+  const canvas = canvases[canvases.length - 1];
   if (canvas) {
     canvas.addEventListener("pointerdown", () => {
       if (_dlgActive) _dlgAdvancePressed = true;

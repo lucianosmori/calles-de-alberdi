@@ -1,48 +1,26 @@
-name: Deploy to GitHub Pages
+name: Deploy to Vercel
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - 'claude/**'
 
-  # Allow manual trigger from the Actions tab
   workflow_dispatch:
-
-# Grant the GITHUB_TOKEN the permissions needed for Pages deployment
-permissions:
-  contents: read
-  pages:    write
-  id-token: write
-
-# Only one deployment runs at a time; in-progress runs are NOT cancelled so
-# a push during deployment doesn't leave the site half-deployed.
-concurrency:
-  group: "pages"
-  cancel-in-progress: false
 
 jobs:
   deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # No build step — this is a plain static site (index.html + game.js)
-      # Add build steps here if you ever introduce a bundler (Vite, esbuild, etc.)
+      - name: Install Vercel CLI
+        run: npm install -g vercel
 
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
+      - name: Pull Vercel project settings
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
 
-      - name: Upload site artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          # Deploy the repo root; all files (index.html, game.js, assets/) are included
-          path: "."
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Deploy to Vercel (production)
+        run: vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }}

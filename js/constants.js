@@ -14,9 +14,9 @@ const GROUND_BOTTOM = 365;
 
 // ── Belt-scroll camera ──────────────────────────────────────────────────────
 const SECTION_W          = 800;   // px — width of one scrolling section
-const CAM_DEAD_ZONE_X    = 0.40;  // fraction of VIEW_W — horizontal dead zone
+const CAM_DEAD_ZONE_X    = 0.15;  // fraction of VIEW_W — tight zone keeps player centered
 const CAM_DEAD_ZONE_Y    = 0.30;  // fraction of ground band height — vertical dead zone
-const CAM_LERP_X         = 0.07;  // horizontal smoothing (lower = smoother)
+const CAM_LERP_X         = 0.12;  // horizontal smoothing — snappy follow
 const CAM_LERP_Y         = 0.04;  // vertical smoothing (subtle)
 const CAM_VERT_RANGE     = 20;    // max px camera shifts vertically
 const GO_ARROW_BLINK_HZ  = 3.5;   // "GO >>>" indicator flash speed
@@ -52,6 +52,12 @@ const ATTACKS = {
   kick:    { range: 90,  width: 42, damage: 22, fxColor: [255, 130, 40]  },
 };
 
+// ── Bot companion AI ────────────────────────────────────────────────────────
+const BOT_MOVE_SPEED      = 160;   // px/sec — slightly slower than player (185)
+const BOT_ATTACK_RANGE    = 55;    // px — distance to start attacking
+const BOT_ATTACK_COOLDOWN = 0.7;   // sec — minimum between attacks
+const BOT_FOLLOW_DIST     = 50;    // px — how close bot follows P1 when idle
+
 // ── Scoring ─────────────────────────────────────────────────────────────────
 const SCORE_ENEMY_KILL = 100;
 const SCORE_BOSS_KILL  = 500;
@@ -65,7 +71,7 @@ const PLAYER_CONFIGS = [
     name:    "GAUCHO",
     col:     [200, 180, 140],   // earthy tan
     hurtCol: [255, 80,  80 ],
-    // TODO: sprite: "hero_gaucho"
+    sprite: "hero_gaucho",
     keys: { up:"w", down:"s", left:"a", right:"d", punch:"z", kick:"x", special:"q" },
     startX: 120,
   },
@@ -73,7 +79,7 @@ const PLAYER_CONFIGS = [
     name:    "CORDOBESA",
     col:     [180, 100, 160],
     hurtCol: [255, 200, 60 ],
-    // TODO: sprite: "hero_cordobesa"  (Player 2 — future)
+    sprite: "hero_cordobesa",
     keys: { up:"i", down:"k", left:"j", right:"l", punch:"u", kick:"o", special:"p" },
     startX: 175,
   },
@@ -448,19 +454,19 @@ const ENEMY_DEFS = {
     label:"PUNGUISTA",   col:[160, 100, 80],  w:26, h:46,
     hp:45,  speed:62,  damage:8,  attackRange:38, attackCooldown:1.3,
     taunts:["¡Dame la billetera!", "¡Afanamos tranqui!", "¡Rajá de acá!"],
-    // TODO: sprite:"enemy_punguista"
+    sprite:"enemy_punguista", spriteH:126,
   },
   patotero: {
     label:"PATOTERO",   col:[140, 70, 50],  w:30, h:48,
     hp:70,  speed:45,  damage:14, attackRange:42, attackCooldown:1.6,
     taunts:["¡Te vamo' a fajar!", "¡Vení pa'ca!", "¡Sacá chapa!"],
-    // TODO: sprite:"enemy_patotero"
+    sprite:"enemy_patotero", spriteH:126,
   },
   naranjita: {
     label:"NARANJITA",  col:[255, 160, 50], w:24, h:44,
     hp:35,  speed:70,  damage:6,  attackRange:36, attackCooldown:1.0,
     taunts:["¡Te cuido el auto, loco!", "¡Son cien pe' nomá!", "¡Dame la moneda!"],
-    // TODO: sprite:"enemy_naranjita"
+    sprite:"enemy_naranjita", spriteH:126,
   },
 
   // ── Boss variants ──────────────────────────────────────────────────────────
@@ -468,25 +474,25 @@ const ENEMY_DEFS = {
     label:"EL COMISARIO", col:[40, 50, 80], w:38, h:62,
     hp:220, speed:35, damage:18, attackRange:50, attackCooldown:1.8, isBoss:true,
     taunts:["¡Acá mando yo!", "¡A la comisaría vas a ir!", "¡Respetá la autoridad!"],
-    // TODO: sprite:"boss_comisario"
+    sprite:"boss_comisario", spriteH:126,
   },
   barra_brava: {
     label:"BARRA BRAVA", col:[50, 120, 180], w:36, h:58,
     hp:200, speed:50, damage:16, attackRange:48, attackCooldown:1.4, isBoss:true,
     taunts:["¡Belgrano no pierde!", "¡Aguante la B!", "¡Te rompo todo!"],
-    // TODO: sprite:"boss_barra_brava"
+    sprite:"boss_barra_brava", spriteH:126,
   },
   puntero: {
     label:"EL PUNTERO", col:[120, 80, 40], w:34, h:54,
     hp:240, speed:40, damage:15, attackRange:52, attackCooldown:1.6, isBoss:true,
     taunts:["¡Yo te consigo laburo!", "¡Votame o rajá!", "¡La calle es mía!"],
-    // TODO: sprite:"boss_puntero"
+    sprite:"boss_puntero", spriteH:126,
   },
   intendente: {
     label:"EL INTENDENTE", col:[30, 30, 60], w:42, h:64,
     hp:300, speed:30, damage:20, attackRange:56, attackCooldown:2.0, isBoss:true,
     taunts:["¡Córdoba es mía!", "¡No me van a voltear!", "¡Soy intocable!"],
-    // TODO: sprite:"boss_intendente"
+    sprite:"boss_intendente", spriteH:126,
   },
 };
 
@@ -495,34 +501,34 @@ const NPC_DEFS = {
   belgrano_fan: {
     col:[50, 140, 200], accentCol:[255, 255, 255], w:22, h:44, speed:28,
     phrases:["¡Vamos Belgrano!", "¡Pirata hasta la muerte!", "¡Aguante la B!"],
-    // TODO: sprite: "npc_belgrano_fan"
+    sprite:"npc_belgrano_fan", spriteH:126,
   },
   feminist: {
     col:[140, 50, 140], accentCol:[200, 80, 200], w:22, h:44, speed:25,
     phrases:["¡Ni una menos!", "¡Vivas nos queremos!", "¡El patriarcado se va a caer!"],
-    // TODO: sprite: "npc_feminist"
+    sprite:"npc_feminist", spriteH:126,
   },
   peronist: {
     col:[100, 140, 200], accentCol:[255, 255, 255], w:24, h:44, speed:22,
     phrases:["¡Perón vuelve!", "¡Viva el General!", "¡La patria es el otro!"],
-    // TODO: sprite: "npc_peronist"
+    sprite:"npc_peronist", spriteH:126,
   },
   trapito: {
     col:[200, 140, 60], accentCol:[255, 180, 80], w:22, h:44, speed:30,
     phrases:["¡Te lo cuido, jefe!", "¡Son doscientos!", "¡Dale, una monedita!"],
-    // TODO: sprite: "npc_trapito"
+    sprite:"npc_trapito", spriteH:126,
   },
   vecina: {
     col:[180, 160, 140], accentCol:[220, 200, 180], w:22, h:44, speed:20,
     phrases:["¡Qué quilombo!", "¡Llamo a la policía!", "¡Estos pibes de ahora!"],
-    // TODO: sprite: "npc_vecina"
+    sprite:"npc_vecina", spriteH:126,
   },
 };
 
 // ── Pickup table ──────────────────────────────────────────────────────────────
 const PICKUP_DEFS = {
-  empanada:   { col:[220, 170, 80],  label:"EMPANADA", heal:20, isWeapon:false, w:18, h:14 },
-  mate:       { col:[80, 140, 60],   label:"MATE",     heal:15, isWeapon:false, w:16, h:20 },
-  fernet:     { col:[50, 30, 20],    label:"FERNET",   heal:0,  isWeapon:true,  damage:22, uses:3, w:12, h:24 },
-  choripan:   { col:[160, 100, 50],  label:"CHORIPÁN", heal:25, isWeapon:false, w:24, h:12 },
+  empanada:   { col:[220, 170, 80],  label:"EMPANADA", heal:20, isWeapon:false, w:18, h:14, sprite:"pickup_empanada" },
+  mate:       { col:[80, 140, 60],   label:"MATE",     heal:15, isWeapon:false, w:16, h:20, sprite:"pickup_mate" },
+  fernet:     { col:[50, 30, 20],    label:"FERNET",   heal:0,  isWeapon:true,  damage:22, uses:3, w:12, h:24, sprite:"pickup_fernet" },
+  choripan:   { col:[160, 100, 50],  label:"CHORIPÁN", heal:25, isWeapon:false, w:24, h:12, sprite:"pickup_choripan" },
 };
