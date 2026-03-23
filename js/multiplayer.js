@@ -265,7 +265,7 @@ function parseRoomFromUrl() {
 /** Show QR overlay with room code + scannable URL. */
 function showQROverlay(roomId) {
   const overlay = document.getElementById("qr-overlay");
-  const canvas  = document.getElementById("qr-canvas");
+  const img     = document.getElementById("qr-img");
   const urlText = document.getElementById("qr-url-text");
   const codeEl  = document.getElementById("qr-room-code");
 
@@ -275,20 +275,8 @@ function showQROverlay(roomId) {
   if (urlText) urlText.textContent = url;
   if (codeEl)  codeEl.textContent = roomId;
 
-  // Generate QR code (library loaded in index.html)
-  if (canvas) {
-    try {
-      if (typeof QRCode !== "undefined" && QRCode.toCanvas) {
-        QRCode.toCanvas(canvas, url, { width: 200, margin: 1 }, (err) => {
-          if (err) console.error("[QR] toCanvas error:", err);
-        });
-      } else {
-        console.warn("[QR] QRCode library not loaded — check CDN script in index.html");
-      }
-    } catch (e) {
-      console.error("[QR] Exception:", e);
-    }
-  }
+  // QR generated server-side by /api/qr (Vercel serverless function)
+  if (img) img.src = `/api/qr?url=${encodeURIComponent(url)}`;
 
   overlay.classList.add("visible");
 
