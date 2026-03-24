@@ -4,8 +4,7 @@
       "Bash",
       "Edit",
       "Read",
-      "WebFetch",
-      "mcp__*"
+      "WebFetch"
     ],
     "deny": [],
     "defaultMode": "bypassPermissions"
