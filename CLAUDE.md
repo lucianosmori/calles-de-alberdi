@@ -5,17 +5,21 @@
 ## Project Structure
 
 ```
-index.html          — Entry point, canvas, virtual gamepad (touch controls)
-game.js             — Scenes (title/game/gameover/victory), combat, wave/boss system, camera
-js/constants.js     — All tuning values, level defs, enemy/NPC/pickup stats, dialogue content
-js/entities.js      — Factory functions (player, enemy, NPC, pickup), AI, HUD, level backgrounds
-js/dialogue.js      — Undertale-style dialogue system (typewriter, portraits, voice beeps)
-js/multiplayer.js   — Supabase client, leaderboard, room functions
-api/config.js       — Vercel serverless function (serves Supabase creds from env vars)
-vercel.json         — Vercel config (static site, no build step)
-env-config.js       — Local dev Supabase config (gitignored)
-assets/             — Sprites, sounds (mostly placeholder)
-tests/              — Playwright E2E tests
+index.html                  — Entry point, canvas, virtual gamepad (touch controls)
+game.js                     — Scenes (title/game/gameover/victory), combat, wave/boss system, camera
+js/constants.js             — All tuning values, level defs, enemy/NPC/pickup stats, dialogue content
+js/entities.js              — Factory functions (player, enemy, NPC, pickup), AI, HUD, level backgrounds
+js/dialogue.js              — Undertale-style dialogue system (typewriter, portraits, voice beeps)
+js/multiplayer.js           — Supabase client, leaderboard, room functions, FCM token management
+api/config.js               — Vercel serverless function (serves Supabase + Firebase public config)
+api/qr.js                   — Vercel serverless function (generates QR code PNGs)
+api/notify.js               — Vercel serverless function (sends FCM push notifications)
+firebase-messaging-sw.js    — Service worker for background push notifications
+manifest.webmanifest        — PWA manifest (required for Android push + home screen install)
+vercel.json                 — Vercel config (static site, no build step, cache headers)
+env-config.js               — Local dev Supabase config (gitignored)
+assets/                     — Sprites, sounds (mostly placeholder), PWA icons
+tests/                      — Playwright E2E tests
 ```
 
 **Load order:** index.html → Kaplay CDN → constants.js → entities.js → dialogue.js → multiplayer.js → game.js
@@ -35,10 +39,12 @@ The site is live at **https://calles-de-alberdi.vercel.app**.
 npx vercel --prod          # Deploy current directory to production
 ```
 
-- `api/config.js` is a serverless function (CommonJS `module.exports`) that serves Supabase creds
-- Env vars set in Vercel dashboard: `SUPABASE_URL`, `SUPABASE_ANON`
+- `api/config.js` serves Supabase + Firebase public config (CommonJS `module.exports`)
+- `api/qr.js` generates QR code PNGs server-side (uses `qrcode` npm package)
+- `api/notify.js` sends FCM push notifications to room hosts (uses `firebase-admin`)
+- Env vars set in Vercel dashboard (see "Push Notifications" section below)
 - Client fetches `/api/config` in production, uses `env-config.js` globals in local dev
-- Production branch is `main` (GitHub auto-deploy), but CLI deploys bypass branch setting
+- Production branch is `main` (GitHub auto-deploy), `claude/**` branches also auto-deploy
 
 ## Architecture
 
@@ -76,6 +82,33 @@ Each level: N enemy waves → boss dialogue → boss fight → next level.
 ### Block Type System (level backgrounds)
 7 types in `js/constants.js` blocks arrays: `store`, `crosswalk`, `lot`, `alley`, `wall`, `park`, `special`
 Rendered by `drawLevelBackground()` in `js/entities.js`.
+
+### Push Notifications (Firebase Cloud Messaging)
+
+Firebase project created as a **Web Application** in the Firebase Console.
+
+**Flow:** Host creates room → browser requests notification permission → FCM token stored in `game_rooms.host_fcm_token` → guest joins → guest calls `/api/notify?room=CODE` → Vercel serverless function sends FCM push via Firebase Admin SDK → host's service worker shows notification.
+
+**Vercel env vars (all required for push notifications):**
+
+| Variable | Type | Source |
+|----------|------|--------|
+| `SUPABASE_URL` | Public | Supabase project settings |
+| `SUPABASE_ANON` | Public | Supabase project settings |
+| `FIREBASE_API_KEY` | Public | Firebase Console > Project Settings > General |
+| `FIREBASE_PROJECT_ID` | Public | Firebase Console > Project Settings > General |
+| `FIREBASE_MESSAGING_SENDER_ID` | Public | Firebase Console > Project Settings > General |
+| `FIREBASE_APP_ID` | Public | Firebase Console > Project Settings > General |
+| `FIREBASE_VAPID_KEY` | Public | Firebase Console > Cloud Messaging > Web Push certificates |
+| `FIREBASE_CLIENT_EMAIL` | Secret | Firebase Console > Service accounts > Generate private key JSON |
+| `FIREBASE_PRIVATE_KEY` | Secret | Firebase Console > Service accounts > Generate private key JSON |
+
+**Caveats:**
+- The service worker (`firebase-messaging-sw.js`) uses a **raw `push` event listener**, NOT Firebase SDK's `onBackgroundMessage`. The browser restarts service workers frequently, killing any postMessage-based state. Do not add Firebase SDK initialization to the SW.
+- **Android requires PWA install** ("Add to Home Screen") for push notifications to work. Desktop Chrome works without this.
+- FCM token request must be **awaited** before showing the QR overlay (race condition: guest could join before the token is stored in the database).
+- Push notifications only appear when the host's tab/app is **not in focus** (backgrounded or minimized).
+- The `notification` field in the FCM payload is what the browser displays. The `data` field is for the click handler.
 
 ## Key Conventions
 
@@ -119,11 +152,15 @@ Rendered by `drawLevelBackground()` in `js/entities.js`.
 - Mobile virtual gamepad (hides during dialogue)
 - Supabase backend (anon auth, rooms, leaderboard, RLS)
 - Vercel deployment with serverless config endpoint
+- Online 2P multiplayer (Supabase Realtime, host-authoritative)
+- QR code room sharing (server-side generation via `/api/qr`)
+- Push notifications when Player 2 joins (Firebase Cloud Messaging)
+- Disconnect handling with dark overlay, countdown, and reconnect window
+- Respawn system (6 lives per player in 2P/bot modes)
 - Debug mode shortcuts
 
 ## TODO
 
 - **Sprites** — generate via Pollinations MCP (player, enemies, bosses, NPCs, pickups)
 - **Audio** — SFX and music (Web Audio or generated)
-- **Multiplayer** — Supabase Realtime 2P co-op
 - **Polish** — combo system, character select, responsive tweaks
