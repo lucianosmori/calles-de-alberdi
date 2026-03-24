@@ -62,7 +62,10 @@ async function _fetchConfig() {
  */
 async function _requestFcmToken() {
   try {
-    if (!("Notification" in window) || !("serviceWorker" in navigator)) return null;
+    if (!("Notification" in window) || !("serviceWorker" in navigator)) {
+      console.log("[FCM] Push not supported in this browser");
+      return null;
+    }
     if (!_fbConfig.apiKey || !_fbVapidKey) {
       console.warn("[FCM] Firebase not configured — skipping notifications");
       return null;
@@ -76,23 +79,38 @@ async function _requestFcmToken() {
 
     // Initialize Firebase app (if not already)
     if (!_fbMessaging) {
-      const app = firebase.initializeApp(_fbConfig);
+      firebase.initializeApp(_fbConfig);
       _fbMessaging = firebase.messaging();
-
-      // Register service worker and pass config
-      const reg = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
-      reg.active && reg.active.postMessage({ type: "FIREBASE_CONFIG", config: _fbConfig });
-      // Also send to installing/waiting SW
-      const sw = reg.installing || reg.waiting;
-      if (sw) sw.postMessage({ type: "FIREBASE_CONFIG", config: _fbConfig });
     }
 
-    const reg = await navigator.serviceWorker.getRegistration("/firebase-messaging-sw.js");
+    // Register service worker and wait for it to activate
+    const reg = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+    if (!reg.active) {
+      const sw = reg.installing || reg.waiting;
+      if (sw) {
+        await new Promise((resolve) => {
+          sw.addEventListener("statechange", function handler() {
+            if (sw.state === "activated") {
+              sw.removeEventListener("statechange", handler);
+              resolve();
+            }
+          });
+          if (sw.state === "activated") resolve();
+        });
+      }
+    }
+
+    // Send Firebase config to the active service worker
+    const activeSW = reg.active || (await navigator.serviceWorker.ready).active;
+    if (activeSW) {
+      activeSW.postMessage({ type: "FIREBASE_CONFIG", config: _fbConfig });
+    }
+
     const token = await _fbMessaging.getToken({
       vapidKey: _fbVapidKey,
       serviceWorkerRegistration: reg,
     });
-    console.log("[FCM] Token obtained");
+    console.log("[FCM] Token obtained:", token.slice(0, 12) + "...");
     return token;
   } catch (e) {
     console.error("[FCM] Token request failed:", e.message);
@@ -248,9 +266,6 @@ async function createRoom() {
     console.error("[Room] Create failed:", error.message);
     return { error: error.message };
   }
-
-  // Request push notification permission + store FCM token (non-blocking)
-  _requestFcmToken().then(token => _storeHostFcmToken(roomId, token));
 
   return { roomId };
 }

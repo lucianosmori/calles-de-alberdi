@@ -449,6 +449,16 @@ scene("title", () => {
       return;
     }
 
+    // Request push notification permission + store FCM token (awaited so token
+    // is in DB before guest can join and trigger /api/notify)
+    onlineStatus = "Configurando notificaciones...";
+    try {
+      const fcmToken = await _requestFcmToken();
+      await _storeHostFcmToken(result.roomId, fcmToken);
+    } catch (e) {
+      console.warn("[Online Host] FCM setup failed (non-fatal):", e.message);
+    }
+
     onlineStatus = "Esperando jugador 2...";
     showQROverlay(result.roomId);
     try { await startHostSession(result.roomId); } catch (e) {
