@@ -1212,24 +1212,88 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
 
   // ── Online: Disconnect handling ───────────────────────────────────────────
   if (online) {
+    let dcOverlay = null;      // dark background overlay
+    let dcLabel = null;        // status text
+    let dcCountdown = null;    // countdown text
+    let dcTimer = -1;          // seconds remaining
+
+    function showDisconnectOverlay(message) {
+      if (!dcOverlay) {
+        dcOverlay = add([rect(VIEW_W, VIEW_H), pos(0, 0), color(0, 0, 0),
+                         opacity(0), fixed(), z(900)]);
+        dcLabel = add([text("", { size: 24, align: "center", width: VIEW_W - 40 }),
+                       pos(VIEW_W / 2, VIEW_H / 2 - 30), anchor("center"),
+                       color(255, 80, 80), opacity(0), fixed(), z(901)]);
+        dcCountdown = add([text("", { size: 16, align: "center" }),
+                           pos(VIEW_W / 2, VIEW_H / 2 + 10), anchor("center"),
+                           color(200, 200, 200), opacity(0), fixed(), z(901)]);
+      }
+      dcOverlay.opacity = 0.7;
+      dcLabel.opacity = 1;
+      dcLabel.text = message;
+      dcCountdown.opacity = 1;
+    }
+
+    function hideDisconnectOverlay() {
+      if (dcOverlay)   dcOverlay.opacity = 0;
+      if (dcLabel)     dcLabel.opacity = 0;
+      if (dcCountdown) { dcCountdown.opacity = 0; dcCountdown.text = ""; }
+      dcTimer = -1;
+    }
+
+    // Update countdown text each frame
+    onUpdate(() => {
+      if (dcTimer <= 0 || !dcCountdown) return;
+      dcTimer -= dt();
+      if (dcTimer < 0) dcTimer = 0;
+      dcCountdown.text = `Reconectando... ${Math.ceil(dcTimer)}s`;
+    });
+
     const onDisconnect = () => {
       window.removeEventListener("mp-disconnected", onDisconnect);
-      showBanner("CONEXION PERDIDA", 3);
-      wait(30, () => {
-        if (!MP.connected) {
-          if (isHost) {
-            // Host continues solo — they have the full simulation
-            showBanner("Continuando solo...", 2);
-            online = false;
+
+      if (isHost) {
+        // Host: dark overlay with message, continues after 30s
+        showDisconnectOverlay("CONEXION PERDIDA");
+        dcTimer = 30;
+        wait(30, () => {
+          if (MP.connected) {
+            hideDisconnectOverlay();
           } else {
-            // Guest can't simulate alone — return to title
-            showBanner("Host desconectado", 2);
+            dcCountdown.text = "";
+            dcLabel.text = "Continuando solo...";
+            wait(2, () => {
+              hideDisconnectOverlay();
+              online = false;
+            });
+          }
+        });
+      } else {
+        // Guest: dark standby screen with countdown, then kicked to title
+        showDisconnectOverlay("ESPERANDO AL HOST...");
+        dcTimer = 30;
+        wait(30, () => {
+          if (MP.connected) {
+            hideDisconnectOverlay();
+          } else {
+            dcCountdown.text = "";
+            dcLabel.text = "Host desconectado";
+            dcLabel.color = rgb(255, 60, 60);
             wait(3, () => go("title"));
           }
-        }
-      });
+        });
+      }
     };
     window.addEventListener("mp-disconnected", onDisconnect);
+
+    // If reconnected during the wait, clear the overlay
+    const onReconnect = () => {
+      if (dcTimer > 0) {
+        hideDisconnectOverlay();
+      }
+    };
+    window.addEventListener("mp-guest-joined", onReconnect);
+    window.addEventListener("mp-host-joined", onReconnect);
   }
 
   function collectPickup(p, pk) {
