@@ -30,7 +30,7 @@ This lets the JS client call `supabase.auth.signInAnonymously()` to get a sessio
 ### What it creates:
 - `leaderboard` table with RLS (public read/insert)
 - `game_rooms` table with RLS (host-only updates, rate limiting)
-- Rate limit trigger: max 3 **active** rooms per hour per user (finished rooms don't count)
+- Rate limit trigger: max 6 **active** rooms per hour per user (finished rooms don't count)
 - `join_room()` function: atomic guest join with row locking
 - `cleanup_stale_rooms()` function: expire old waiting rooms
 - Realtime publication for `game_rooms`
@@ -130,6 +130,6 @@ Check the `game_rooms` table in **Table Editor** after creating a room in-game.
 
 - The **anon key** is a public key — it's safe to use in browser code. It only has the permissions you grant via RLS policies.
 - All table access is controlled by RLS. Even with the anon key, users can only do what the policies allow.
-- The rate limit trigger prevents room spam (3 active rooms/hour per anonymous user). Finished rooms don't count.
+- The rate limit trigger prevents room spam (6 active rooms/hour per anonymous user). Finished rooms don't count.
 - The `join_room()` function uses `FOR UPDATE` row locking to prevent race conditions.
 - Anonymous auth sessions expire after the Supabase default (configurable in dashboard under Auth > Settings).

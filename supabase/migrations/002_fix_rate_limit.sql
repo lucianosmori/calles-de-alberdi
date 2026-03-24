@@ -18,8 +18,8 @@ begin
     and created_at > now() - interval '1 hour'
     and status in ('waiting', 'playing');
 
-  if recent_count >= 3 then
-    raise exception 'Rate limit exceeded: max 3 active rooms per hour'
+  if recent_count >= 6 then
+    raise exception 'Rate limit exceeded: max 6 active rooms per hour'
       using errcode = 'P0001';
   end if;
 
