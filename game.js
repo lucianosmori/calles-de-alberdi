@@ -539,6 +539,9 @@ scene("title", () => {
       return;
     }
 
+    // Notify host via push notification (fire-and-forget)
+    try { fetch(`/api/notify?room=${encodeURIComponent(roomCode)}`).catch(() => {}); } catch (_) {}
+
     onlineStatus = "Conectado! Esperando host...";
 
     const onHostStart = () => {

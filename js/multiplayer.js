@@ -15,6 +15,11 @@ let _supabaseAnon = window.__SUPABASE_ANON || "";
 let _sb = null;
 let _configPromise = null;
 
+// Firebase public config (populated by _fetchConfig)
+let _fbConfig = { apiKey: "", projectId: "", messagingSenderId: "", appId: "" };
+let _fbVapidKey = "";
+let _fbMessaging = null;
+
 /**
  * Fetch config from Vercel serverless endpoint.
  * Returns same promise if already in-flight (prevents race when multiple
@@ -31,12 +36,81 @@ async function _fetchConfig() {
         const cfg = await res.json();
         _supabaseUrl  = cfg.supabaseUrl  || _supabaseUrl;
         _supabaseAnon = cfg.supabaseAnon || _supabaseAnon;
+        // Firebase public config
+        if (cfg.firebaseApiKey) {
+          _fbConfig = {
+            apiKey:            cfg.firebaseApiKey,
+            projectId:         cfg.firebaseProjectId,
+            messagingSenderId: cfg.firebaseMessagingSenderId,
+            appId:             cfg.firebaseAppId,
+          };
+          _fbVapidKey = cfg.firebaseVapidKey || "";
+        }
       }
     } catch (_) {
       // /api/config not available (local dev without env-config.js) — that's fine
     }
   })();
   return _configPromise;
+}
+
+// ── Firebase Cloud Messaging ─────────────────────────────────────────────────
+
+/**
+ * Initialize Firebase Messaging + register service worker.
+ * Returns the FCM token string, or null if unsupported/denied.
+ */
+async function _requestFcmToken() {
+  try {
+    if (!("Notification" in window) || !("serviceWorker" in navigator)) return null;
+    if (!_fbConfig.apiKey || !_fbVapidKey) {
+      console.warn("[FCM] Firebase not configured — skipping notifications");
+      return null;
+    }
+
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      console.log("[FCM] Notification permission denied");
+      return null;
+    }
+
+    // Initialize Firebase app (if not already)
+    if (!_fbMessaging) {
+      const app = firebase.initializeApp(_fbConfig);
+      _fbMessaging = firebase.messaging();
+
+      // Register service worker and pass config
+      const reg = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+      reg.active && reg.active.postMessage({ type: "FIREBASE_CONFIG", config: _fbConfig });
+      // Also send to installing/waiting SW
+      const sw = reg.installing || reg.waiting;
+      if (sw) sw.postMessage({ type: "FIREBASE_CONFIG", config: _fbConfig });
+    }
+
+    const reg = await navigator.serviceWorker.getRegistration("/firebase-messaging-sw.js");
+    const token = await _fbMessaging.getToken({
+      vapidKey: _fbVapidKey,
+      serviceWorkerRegistration: reg,
+    });
+    console.log("[FCM] Token obtained");
+    return token;
+  } catch (e) {
+    console.error("[FCM] Token request failed:", e.message);
+    return null;
+  }
+}
+
+/**
+ * Store the host's FCM token in the game_rooms row.
+ */
+async function _storeHostFcmToken(roomId, token) {
+  const sb = getSupabase();
+  if (!sb || !token) return;
+  try {
+    await sb.from("game_rooms").update({ host_fcm_token: token }).eq("room_id", roomId);
+  } catch (e) {
+    console.warn("[FCM] Failed to store token:", e.message);
+  }
 }
 
 /**
@@ -174,6 +248,10 @@ async function createRoom() {
     console.error("[Room] Create failed:", error.message);
     return { error: error.message };
   }
+
+  // Request push notification permission + store FCM token (non-blocking)
+  _requestFcmToken().then(token => _storeHostFcmToken(roomId, token));
+
   return { roomId };
 }
 
