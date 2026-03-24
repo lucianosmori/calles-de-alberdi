@@ -2,46 +2,48 @@
 // Calles de Alberdi — Firebase Cloud Messaging Service Worker
 // Handles background push notifications (e.g., "Player 2 joined your room").
 // Must live at root (/) for full scope.
+//
+// Uses a raw "push" event listener so notifications work even when the SW
+// has been restarted by the browser (which kills any postMessage-based state).
 // =============================================================================
 
-/* global importScripts, firebase */
-importScripts("https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js");
-importScripts("https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js");
+// Track whether the push was already handled (avoid duplicates)
+let _pushHandled = false;
 
-let _initialized = false;
+// Raw push handler — works without Firebase SDK initialization.
+// FCM delivers messages as standard Web Push; we parse the payload directly.
+self.addEventListener("push", (event) => {
+  _pushHandled = false;
 
-// Listen for config from the main page — only then initialize Firebase
-self.addEventListener("message", (event) => {
-  if (_initialized) return;
-  if (event.data && event.data.type === "FIREBASE_CONFIG") {
-    const cfg = event.data.config;
-    if (!cfg.apiKey || cfg.apiKey === "pending") return;
+  let title = "Calles de Alberdi";
+  let body  = "Jugador 2 se unio a tu sala!";
+  let data  = {};
 
-    firebase.initializeApp({
-      apiKey:            cfg.apiKey,
-      projectId:         cfg.projectId,
-      messagingSenderId: cfg.messagingSenderId,
-      appId:             cfg.appId,
-    });
-
-    const messaging = firebase.messaging();
-    messaging.onBackgroundMessage((payload) => {
-      const title = (payload.notification && payload.notification.title) || "Calles de Alberdi";
-      const body  = (payload.notification && payload.notification.body)  || "Jugador 2 se unio a tu sala!";
-
-      return self.registration.showNotification(title, {
-        body,
-        icon:  "/assets/icon-192.png",
-        badge: "/assets/icon-192.png",
-        tag:   "room-joined",
-        requireInteraction: true,
-        data: payload.data || {},
-      });
-    });
-
-    _initialized = true;
-    console.log("[SW] Firebase Messaging initialized");
+  if (event.data) {
+    try {
+      const payload = event.data.json();
+      // FCM wraps notification in a "notification" key
+      if (payload.notification) {
+        title = payload.notification.title || title;
+        body  = payload.notification.body  || body;
+      }
+      data = payload.data || payload.fcmOptions || {};
+    } catch (_) {
+      // If JSON parsing fails, use defaults
+    }
   }
+
+  _pushHandled = true;
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      icon:  "/assets/icon-192.png",
+      badge: "/assets/icon-192.png",
+      tag:   "room-joined",
+      requireInteraction: true,
+      data,
+    })
+  );
 });
 
 // Notification click — focus existing game tab or open the URL

@@ -83,28 +83,9 @@ async function _requestFcmToken() {
       _fbMessaging = firebase.messaging();
     }
 
-    // Register service worker and wait for it to activate
+    // Register service worker (push handler is raw — no Firebase SDK needed in SW)
     const reg = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
-    if (!reg.active) {
-      const sw = reg.installing || reg.waiting;
-      if (sw) {
-        await new Promise((resolve) => {
-          sw.addEventListener("statechange", function handler() {
-            if (sw.state === "activated") {
-              sw.removeEventListener("statechange", handler);
-              resolve();
-            }
-          });
-          if (sw.state === "activated") resolve();
-        });
-      }
-    }
-
-    // Send Firebase config to the active service worker
-    const activeSW = reg.active || (await navigator.serviceWorker.ready).active;
-    if (activeSW) {
-      activeSW.postMessage({ type: "FIREBASE_CONFIG", config: _fbConfig });
-    }
+    await navigator.serviceWorker.ready; // ensure SW is active
 
     const token = await _fbMessaging.getToken({
       vapidKey: _fbVapidKey,
