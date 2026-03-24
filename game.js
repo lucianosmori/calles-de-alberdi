@@ -1204,13 +1204,18 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
   if (online) {
     const onDisconnect = () => {
       window.removeEventListener("mp-disconnected", onDisconnect);
-      // Show disconnect banner — game continues, P2 stands idle
       showBanner("CONEXION PERDIDA", 3);
-      // After 30s, if still disconnected, switch to solo
       wait(30, () => {
         if (!MP.connected) {
-          showBanner("Continuando solo...", 2);
-          online = false;
+          if (isHost) {
+            // Host continues solo — they have the full simulation
+            showBanner("Continuando solo...", 2);
+            online = false;
+          } else {
+            // Guest can't simulate alone — return to title
+            showBanner("Host desconectado", 2);
+            wait(3, () => go("title"));
+          }
         }
       });
     };
