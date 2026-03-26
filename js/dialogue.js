@@ -60,6 +60,16 @@ function isDialogueActive() {
   return _dlgActive;
 }
 
+/** Force-close dialogue from an external trigger (e.g., multiplayer sync).
+ *  Does NOT call _dlgOnComplete — the host controls game flow. */
+function endDialogue() {
+  if (!_dlgActive) return;
+  _dlgActive = false;
+  _dlgLines  = [];
+  _dlgDone   = true;
+  document.getElementById("gamepad")?.classList.remove("dialogue-active");
+}
+
 // ── Input wiring (call once per scene) ───────────────────────────────────────
 
 function initDialogueInput() {

@@ -413,6 +413,18 @@ function broadcastSceneChange(sceneName, params) {
   MP.channel.send({ type: "broadcast", event: "scene_change", payload: { scene: sceneName, params } });
 }
 
+/** Host tells guest to show dialogue. */
+function broadcastDialogue(lines) {
+  if (!MP.channel || !MP.isHost) return;
+  MP.channel.send({ type: "broadcast", event: "dialogue", payload: { lines } });
+}
+
+/** Host tells guest dialogue is over. */
+function broadcastDialogueEnd() {
+  if (!MP.channel || !MP.isHost) return;
+  MP.channel.send({ type: "broadcast", event: "dialogue_end", payload: {} });
+}
+
 /**
  * Start a host session: subscribe to room, track presence, listen for guest input.
  */
@@ -528,6 +540,17 @@ async function startGuestSession(roomId) {
     if (scene) {
       window.dispatchEvent(new CustomEvent("mp-scene-change", { detail: { scene, params } }));
     }
+  });
+
+  // Listen for dialogue events from host
+  channel.on("broadcast", { event: "dialogue" }, (msg) => {
+    const lines = msg.payload && msg.payload.lines;
+    if (lines && lines.length) {
+      window.dispatchEvent(new CustomEvent("mp-dialogue", { detail: { lines } }));
+    }
+  });
+  channel.on("broadcast", { event: "dialogue_end" }, () => {
+    window.dispatchEvent(new Event("mp-dialogue-end"));
   });
 
   channel.subscribe((status) => {

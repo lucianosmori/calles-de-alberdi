@@ -662,7 +662,10 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
 
   // Level intro dialogue, then kick off wave 1
   if (lvl.introDialogue && lvl.introDialogue.length > 0) {
-    showDialogue(lvl.introDialogue, () => advanceWave());
+    if (!online || isHost) {
+      showDialogue(lvl.introDialogue, () => { broadcastDialogueEnd(); advanceWave(); });
+      broadcastDialogue(lvl.introDialogue);
+    }
   } else {
     advanceWave();
   }
@@ -733,7 +736,8 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
     };
 
     if (dialogueLines && dialogueLines.length > 0) {
-      showDialogue(dialogueLines, spawnBosses);
+      showDialogue(dialogueLines, () => { broadcastDialogueEnd(); spawnBosses(); });
+      broadcastDialogue(dialogueLines);
     } else {
       showBanner(lvl.bossIntro, 2.5);
       wait(3, spawnBosses);
@@ -1208,6 +1212,15 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
       go(scene, { ...params, online: true, isHost: false });
     };
     window.addEventListener("mp-scene-change", onScene);
+
+    // Guest listens for dialogue events from host
+    window.addEventListener("mp-dialogue", (e) => {
+      const lines = e.detail && e.detail.lines;
+      if (lines && lines.length) showDialogue(lines, () => {});
+    });
+    window.addEventListener("mp-dialogue-end", () => {
+      endDialogue();
+    });
   }
 
   // ── Online: Disconnect handling ───────────────────────────────────────────
