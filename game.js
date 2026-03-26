@@ -330,6 +330,14 @@ scene("title", () => {
        pos(cx, VIEW_H - 18), anchor("center"),
        color(70, 70, 80), fixed(), z(10)]);
 
+  // Desktop keyboard controls on title screen
+  if (!isMobile) {
+    add([text("CONTROLES\nJ1: WASD Mover   Z Puño   X Patada   Q Especial\nJ2: IJKL Mover   U Puño   O Patada   P Especial",
+              { size: 8, align: "center", lineSpacing: 4 }),
+         pos(cx, VIEW_H - 52), anchor("center"),
+         color(120, 130, 140), fixed(), z(10)]);
+  }
+
   // Rain on title screen
   initWeather("rain", 45);
   onUpdate(() => updateWeather());
@@ -593,7 +601,7 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
   let enemies     = [];   // active enemy game objects
   let npcs        = [];   // background NPC game objects
   let pickups     = [];   // pickup game objects
-  let waveIdx     = -1;   // current wave (incremented by advanceWave)
+  let waveIdx     = -1;   // current wave index
   let bossObjs    = [];   // boss game object(s) for current encounter
   let phase       = "wave"; // "wave" | "bossIntro" | "boss" | "levelClear"
   let pendingSpawns = 0;   // enemies scheduled but not yet spawned
@@ -613,13 +621,12 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
     broadcastSceneChange("game", { numPlayers, levelIdx, score: carriedScore, botEnabled, online: true, isHost: true });
   }
 
-  // ── Section locking state ──────────────────────────────────────────────────
+  // ── Free-roam spawn state ──────────────────────────────────────────────────
   const levelW        = lvl.levelWidth || SCREEN_W;
   const sections      = lvl.sections || [{ startX: 0, endX: levelW }];
   let currentSection  = 0;
-  let sectionWallX    = sections[0].endX - SECTION_WALL_MARGIN;
-  let sectionOpen     = false;
-  let goArrowTimer    = 0;
+  const triggeredSections = new Set();
+  let queuedWaves     = [];   // waveDefs waiting to spawn when enemy cap allows
 
   // Expose level width for entities.js (speech bubbles, NPC clamping)
   window._currentLevelWidth = levelW;
@@ -660,32 +667,62 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
     }
   }
 
-  // Level intro dialogue, then kick off wave 1
+  // Desktop controls overlay at game start (auto-fades after 3s)
+  if (!_isMobile) {
+    const ctrlBg = add([
+      rect(VIEW_W, VIEW_H), pos(0, 0), color(0, 0, 0), opacity(0.5),
+      fixed(), z(500),
+    ]);
+    const ctrlLines = numPlayers === 1
+      ? "WASD Mover   Z Puño   X Patada   Q Especial"
+      : "J1: WASD Mover  Z Puño  X Patada  Q Especial\nJ2: IJKL Mover  U Puño  O Patada  P Especial";
+    const ctrlText = add([
+      text(ctrlLines, { size: 10, align: "center", lineSpacing: 6 }),
+      pos(VIEW_W / 2, VIEW_H / 2), anchor("center"),
+      color(255, 245, 120), opacity(1), fixed(), z(501),
+    ]);
+    wait(2, () => {
+      ctrlBg.onUpdate(() => {
+        ctrlBg.opacity = Math.max(0, ctrlBg.opacity - dt() * 2);
+        ctrlText.opacity = Math.max(0, ctrlText.opacity - dt() * 2);
+        if (ctrlBg.opacity <= 0) { destroy(ctrlBg); destroy(ctrlText); }
+      });
+    });
+  }
+
+  // Level intro dialogue, then kick off section 0 wave
   if (lvl.introDialogue && lvl.introDialogue.length > 0) {
     if (!online || isHost) {
-      showDialogue(lvl.introDialogue, () => { broadcastDialogueEnd(); advanceWave(); });
+      showDialogue(lvl.introDialogue, () => { broadcastDialogueEnd(); spawnSectionWave(0); });
       broadcastDialogue(lvl.introDialogue);
     }
   } else {
-    advanceWave();
+    spawnSectionWave(0);
   }
 
   // ── Wave / boss system ──────────────────────────────────────────────────────
 
-  function advanceWave() {
-    waveIdx++;
+  function spawnSectionWave(sectionIdx) {
+    if (sectionIdx >= lvl.waves.length) return;
+    triggeredSections.add(sectionIdx);
+    const waveDef = lvl.waves[sectionIdx];
+    const living = players.filter(p => p.hp > 0);
+    const leadX = living.length > 0 ? Math.max(...living.map(p => p.pos.x)) : 100;
 
-    if (waveIdx < lvl.waves.length) {
-      phase = "wave";
-      showBanner(`WAVE  ${waveIdx + 1}`, 1.5);
-      spawnWaveEnemies(lvl.waves[waveIdx]);
-    } else {
-      beginBossSequence();
+    // If too many enemies alive, queue for later
+    if (enemies.length >= MAX_ACTIVE_ENEMIES) {
+      queuedWaves.push({ idx: sectionIdx, waveDef });
+      return;
     }
+
+    phase = "wave";
+    waveIdx = sectionIdx;
+    showBanner(`WAVE  ${sectionIdx + 1}`, 1.5);
+    spawnWaveEnemies(waveDef, leadX);
   }
 
-  function spawnWaveEnemies(waveDef) {
-    const section = sections[currentSection];
+  function spawnWaveEnemies(waveDef, leadX) {
+    if (typeof leadX === "undefined") leadX = 100;
     let delay = 0.5;
     for (const group of waveDef) {
       for (let i = 0; i < group.count; i++) {
@@ -694,10 +731,10 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
           pendingSpawns = Math.max(0, pendingSpawns - 1);
           if (phase !== "wave") return;
           const y = rand(GROUND_TOP + 30, GROUND_BOTTOM - 10);
-          const fromRight = Math.random() > 0.3;
+          const fromRight = Math.random() > (1 - SPAWN_RIGHT_BIAS);
           const x = fromRight
-            ? section.endX + rand(20, 60)
-            : section.startX - rand(20, 60);
+            ? clamp(leadX + rand(150, 300), 30, levelW - 30)
+            : clamp(leadX - rand(150, 300), 30, levelW - 30);
           const en = spawnEnemy(group.type, x, y);
           en._mpId = _nextMpId++;
           enemies.push(en);
@@ -748,15 +785,8 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
     if (enemies.length > 0 || pendingSpawns > 0) return;
 
     if (phase === "wave") {
-      // Section cleared — open the wall so player can walk forward
-      sectionOpen = true;
-      goArrowTimer = 0;
       showBanner("WAVE  CLEAR!", 1.2);
-      // If this is the last section before boss, auto-advance after delay
-      if (waveIdx >= lvl.waves.length - 1) {
-        wait(0.8, () => beginBossSequence());
-      }
-      // Otherwise, player must walk into next section to trigger advanceWave
+      // Boss trigger is handled in the free-roam section detection onUpdate
 
     } else if (phase === "boss") {
       phase = "levelClear";
@@ -946,18 +976,18 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
   let debugGodMode  = false;
   let debugAutoWalk = false;
 
-  function debugSkipWave() { pendingSpawns = 0; [...enemies].forEach(e => killEnemy(e)); }
+  function debugSkipWave() { pendingSpawns = 0; queuedWaves = []; [...enemies].forEach(e => killEnemy(e)); }
   function debugSkipLevel() {
     const next = levelIdx + 1;
     if (next < LEVELS.length) go("game", { numPlayers, levelIdx: next, botEnabled, online, isHost });
   }
   function debugSkipToBoss() {
-    // Set state BEFORE killing enemies (killEnemy triggers checkWaveCleared)
     pendingSpawns = 0;
-    waveIdx = lvl.waves.length;  // past all waves so checkWaveCleared won't re-trigger
+    queuedWaves = [];
+    waveIdx = lvl.waves.length;
     currentSection = sections.length - 1;
-    sectionWallX = sections[currentSection].endX - SECTION_WALL_MARGIN;
-    sectionOpen = false;
+    // Mark all sections as triggered
+    for (let i = 0; i < sections.length; i++) triggeredSections.add(i);
     [...enemies].forEach(e => { e.hp = 0; destroy(e); });
     enemies.length = 0;
     // Move player to final section, snap camera, start boss
@@ -995,33 +1025,48 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
     }
   });
 
-  // ── Section bounds computation (shared by all entity updates) ──────────
+  // ── Level bounds (no more section walls — full level walkable) ──────────
   function getSectionBounds() {
-    const sec = sections[currentSection];
-    const leftBound  = sec.startX + 20;
-    // When section open, extend right bound into next section (if any)
-    let rightBound;
-    if (sectionOpen && currentSection < sections.length - 1) {
-      rightBound = sections[currentSection + 1].endX - SECTION_WALL_MARGIN;
-    } else {
-      rightBound = sectionWallX;
-    }
-    return { left: leftBound, right: rightBound };
+    return { left: 20, right: levelW - 20 };
   }
 
-  // ── Section transition detection ────────────────────────────────────────
+  // ── Free-roam section trigger detection ─────────────────────────────────
   onUpdate(() => {
     if (online && !isHost) return;
-    if (!sectionOpen) return;
-    if (currentSection >= sections.length - 1) return;  // already in last section
+    if (phase === "boss" || phase === "bossIntro" || phase === "levelClear") return;
     const living = players.filter(p => p.hp > 0);
-    const nextSectionStart = sections[currentSection + 1].startX;
-    const anyInNextSection = living.some(p => p.pos.x > nextSectionStart + 20);
-    if (anyInNextSection) {
-      currentSection++;
-      sectionOpen = false;
-      sectionWallX = sections[currentSection].endX - SECTION_WALL_MARGIN;
-      advanceWave();
+    if (living.length === 0) return;
+    const leadX = Math.max(...living.map(p => p.pos.x));
+
+    // Trigger waves as player enters new sections
+    for (let i = 0; i < sections.length; i++) {
+      if (triggeredSections.has(i)) continue;
+      if (leadX > sections[i].startX + 40) {
+        triggeredSections.add(i);
+        currentSection = i;
+        if (i < lvl.waves.length) {
+          spawnSectionWave(i);
+        }
+      }
+    }
+
+    // Drain queued waves when enemy cap allows
+    if (queuedWaves.length > 0 && enemies.length < MAX_ACTIVE_ENEMIES && pendingSpawns === 0) {
+      const queued = queuedWaves.shift();
+      showBanner(`WAVE  ${queued.idx + 1}`, 1.5);
+      spawnWaveEnemies(queued.waveDef, leadX);
+    }
+
+    // Boss triggers once all sections entered + player in last section area
+    if (triggeredSections.size >= sections.length && phase === "wave" && pendingSpawns === 0) {
+      const lastSection = sections[sections.length - 1];
+      if (leadX > lastSection.startX + 100) {
+        // Clean up straggler enemies behind the player
+        const stragglers = [...enemies].filter(en => en.pos.x < leadX - 350);
+        stragglers.forEach(en => killEnemy(en));
+        queuedWaves = [];
+        beginBossSequence();
+      }
     }
   });
 
@@ -1109,7 +1154,7 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
     MP.sendTimer += dt();
     if (MP.sendTimer < 0.050) return;
     MP.sendTimer = 0;
-    broadcastGameState(players, enemies, pickups, score, waveIdx, phase, currentSection, sectionOpen);
+    broadcastGameState(players, enemies, pickups, score, waveIdx, phase, currentSection);
   });
 
   // ── Online: Guest sends input + applies host state ────────────────────────
@@ -1415,130 +1460,6 @@ scene("game", ({ numPlayers = 1, levelIdx = 0, score: carriedScore = 0, botEnabl
     setCamPos(_camX, _camY);
   });
 
-  // ── "GO >>>" arcade indicator when section is cleared ──────────────────
-  //  Cadillacs-and-Dinosaurs style: big bouncing arrow on right side of
-  //  screen with "GO!" text, pulsing size, bold yellow/orange with outline.
-  onUpdate(() => {
-    if (sectionOpen) goArrowTimer += dt();
-  });
-  onDraw(() => {
-    if (!sectionOpen || phase !== "wave") return;
-    if (currentSection >= sections.length - 1) return;
-
-    const cam2 = camPos();
-    pushTransform();
-    pushTranslate(cam2.x - VIEW_W / 2, cam2.y - VIEW_H / 2);
-
-    const t = goArrowTimer;
-    const vw = typeof VIEW_W !== "undefined" ? VIEW_W : SCREEN_W;
-    const vh = typeof VIEW_H !== "undefined" ? VIEW_H : SCREEN_H;
-
-    // Bounce: sine-wave vertical bob (8px amplitude)
-    const bounceY = Math.sin(t * 3.2) * 8;
-    // Pulse: scale oscillates between 0.85 and 1.15
-    const pulse = 1.0 + 0.15 * Math.sin(t * 4.5);
-    // Alpha: gentle throb so it never fully disappears
-    const alpha = 0.7 + 0.3 * Math.sin(t * GO_ARROW_BLINK_HZ * Math.PI * 2);
-
-    // Position: right side of screen, vertically centred
-    const cx = vw - 55;
-    const cy = vh / 2 - 10 + bounceY;
-
-    // Arrow dimensions (before pulse)
-    const arrowW  = 44 * pulse;   // width of the triangle part
-    const arrowH  = 52 * pulse;   // full height
-    const shaftW  = 26 * pulse;   // rectangle shaft width
-    const shaftH  = 24 * pulse;   // rectangle shaft height
-    const halfH   = arrowH / 2;
-
-    // ── Outline (dark border) — draw everything shifted by 2px in each dir ──
-    const outlineOff = 2;
-    const outlineCol = rgb(80, 40, 0);
-    for (const ox of [-outlineOff, 0, outlineOff]) {
-      for (const oy of [-outlineOff, 0, outlineOff]) {
-        if (ox === 0 && oy === 0) continue;
-        // Shaft outline
-        drawRect({
-          pos: vec2(cx - shaftW + ox, cy - shaftH / 2 + oy),
-          width: shaftW, height: shaftH,
-          color: outlineCol, opacity: alpha,
-        });
-        // Arrowhead outline (stacked rects to approximate triangle)
-        const baseX = cx + ox;
-        for (let i = 0; i < 6; i++) {
-          const frac = i / 5;
-          const rx = baseX + arrowW * frac;
-          const rh = arrowH * (1 - frac);
-          drawRect({
-            pos: vec2(rx, cy - rh / 2 + oy),
-            width: arrowW / 5 + 2, height: rh,
-            color: outlineCol, opacity: alpha,
-          });
-        }
-      }
-    }
-
-    // ── Main arrow fill ─────────────────────────────────────────────────────
-    const fillCol = rgb(255, 210, 30);   // bright arcade yellow
-
-    // Shaft (rectangle part)
-    drawRect({
-      pos: vec2(cx - shaftW, cy - shaftH / 2),
-      width: shaftW, height: shaftH,
-      color: fillCol, opacity: alpha,
-    });
-
-    // Arrowhead — approximated with stacked vertical rects (tapers to point)
-    for (let i = 0; i < 6; i++) {
-      const frac = i / 5;
-      const rx = cx + arrowW * frac;
-      const rh = arrowH * (1 - frac);
-      // Gradient from yellow to orange toward tip
-      const r = Math.round(255);
-      const g = Math.round(210 - 60 * frac);
-      const b = Math.round(30 - 10 * frac);
-      drawRect({
-        pos: vec2(rx, cy - rh / 2),
-        width: arrowW / 5 + 2, height: rh,
-        color: rgb(r, g, b), opacity: alpha,
-      });
-    }
-
-    // ── Inner highlight stripe (gives depth) ────────────────────────────────
-    drawRect({
-      pos: vec2(cx - shaftW + 3, cy - shaftH / 2 + 3),
-      width: shaftW - 4, height: 5,
-      color: rgb(255, 245, 160), opacity: alpha * 0.6,
-    });
-
-    // ── "GO!" text above the arrow ──────────────────────────────────────────
-    const textSize = Math.round(22 * pulse);
-    // Text outline
-    for (const ox of [-1, 0, 1]) {
-      for (const oy of [-1, 0, 1]) {
-        if (ox === 0 && oy === 0) continue;
-        drawText({
-          text: "GO!",
-          pos: vec2(cx - 4 + ox, cy - halfH - 10 + oy),
-          size: textSize,
-          color: rgb(80, 40, 0),
-          opacity: alpha,
-          anchor: "center",
-        });
-      }
-    }
-    // Text fill
-    drawText({
-      text: "GO!",
-      pos: vec2(cx - 4, cy - halfH - 10),
-      size: textSize,
-      color: rgb(255, 230, 60),
-      opacity: alpha,
-      anchor: "center",
-    });
-
-    popTransform();
-  });
 
 
   // ── Utility ─────────────────────────────────────────────────────────────────

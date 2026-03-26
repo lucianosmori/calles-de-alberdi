@@ -367,7 +367,7 @@ function _drawSpecial(b, dk, lt, lvl) {
 // =============================================================================
 
 let _weatherParticles = [];
-let _weatherType = "rain";  // "rain", "clear", "overcast"
+let _weatherType = "rain";  // "rain", "clear", "overcast", "sunset", "night"
 
 /**
  * Initialise the weather particle pool.  Call once at scene start.
@@ -379,9 +379,43 @@ function initWeather(type = "rain", count) {
   _weatherParticles = [];
   if (type === "clear") return;  // no particles for clear weather
 
-  const density = count || RAIN_DENSITY;
   const sw = typeof VIEW_W !== "undefined" ? VIEW_W : SCREEN_W;
   const sh = typeof VIEW_H !== "undefined" ? VIEW_H : SCREEN_H;
+
+  if (type === "night") {
+    // Twinkling stars — static positions
+    const starCount = count || 40;
+    for (let i = 0; i < starCount; i++) {
+      _weatherParticles.push({
+        x:     rand(0, sw),
+        y:     rand(0, sh * 0.55),  // stars only in upper sky
+        speed: 0,
+        len:   rand(1, 2),
+        alpha: rand(0.3, 0.8),
+        phase: rand(0, Math.PI * 2),  // desync twinkle
+      });
+    }
+    return;
+  }
+
+  if (type === "sunset") {
+    // Floating dust/leaf motes
+    const moteCount = count || 30;
+    for (let i = 0; i < moteCount; i++) {
+      _weatherParticles.push({
+        x:     rand(0, sw),
+        y:     rand(0, sh),
+        speed: rand(40, 80),
+        len:   rand(2, 4),    // mote size
+        alpha: rand(0.15, 0.3),
+        drift: rand(-20, 20), // horizontal drift speed
+      });
+    }
+    return;
+  }
+
+  // Rain / overcast — default
+  const density = count || RAIN_DENSITY;
   for (let i = 0; i < density; i++) {
     _weatherParticles.push({
       x:     rand(0, sw),
@@ -395,9 +429,22 @@ function initWeather(type = "rain", count) {
 
 /** Advance weather physics.  Call in onUpdate(). */
 function updateWeather() {
-  if (_weatherType === "clear" || _weatherParticles.length === 0) return;
+  if (_weatherType === "clear" || _weatherType === "night" || _weatherParticles.length === 0) return;
   const sw = typeof VIEW_W !== "undefined" ? VIEW_W : SCREEN_W;
   const sh = typeof VIEW_H !== "undefined" ? VIEW_H : SCREEN_H;
+
+  if (_weatherType === "sunset") {
+    for (const p of _weatherParticles) {
+      p.y += p.speed * dt();
+      p.x += (p.drift || 0) * dt();
+      if (p.y > sh + 4) { p.y = -p.len; p.x = rand(0, sw); }
+      if (p.x > sw + 4) { p.x = -4; }
+      if (p.x < -4)     { p.x = sw + 2; }
+    }
+    return;
+  }
+
+  // Rain / overcast
   for (const p of _weatherParticles) {
     p.y += p.speed * dt();
     p.x += Math.tan(RAIN_ANGLE) * p.speed * dt();  // diagonal slant
@@ -409,8 +456,36 @@ function updateWeather() {
 /** Render weather particles.  Call in onDraw(). */
 function drawWeather() {
   if (_weatherType === "clear" || _weatherParticles.length === 0) return;
+
+  if (_weatherType === "night") {
+    for (const p of _weatherParticles) {
+      const twinkle = 0.4 + 0.6 * Math.sin(time() * 2 + p.phase);
+      drawRect({
+        pos:     vec2(p.x, p.y),
+        width:   p.len,
+        height:  p.len,
+        color:   rgb(200, 210, 255),
+        opacity: p.alpha * twinkle,
+      });
+    }
+    return;
+  }
+
+  if (_weatherType === "sunset") {
+    for (const p of _weatherParticles) {
+      drawRect({
+        pos:     vec2(p.x, p.y),
+        width:   p.len + 1,
+        height:  p.len,
+        color:   rgb(220, 170, 80),
+        opacity: p.alpha,
+      });
+    }
+    return;
+  }
+
+  // Rain / overcast
   for (const p of _weatherParticles) {
-    // Thin angled streak for rain
     drawRect({
       pos:     vec2(p.x, p.y),
       width:   1,
@@ -1233,10 +1308,10 @@ function drawHUD(players, waveIdx, lvl, enemies, bossObjs, phase, score, comboCo
   // ── Controls legend (bottom, desktop only) ──────────────────────────────
   if (!window.matchMedia("(pointer: coarse)").matches) {
     drawText({
-      text:  "P1 WASD Move  Z Punch  X Kick  Q Special  |  P2 IJKL / U O P",
-      pos:   vec2(vw / 2 - 215, vh - 18),
-      size:  8,
-      color: rgb(95, 95, 95),
+      text:  "J1 WASD  Z Puño  X Patada  Q Especial  |  J2 IJKL  U O P",
+      pos:   vec2(vw / 2 - 200, vh - 18),
+      size:  9,
+      color: rgb(140, 140, 150),
     });
   }
 }

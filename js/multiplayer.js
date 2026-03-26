@@ -373,7 +373,7 @@ function hideQROverlay() {
 /**
  * Host broadcasts game state snapshot (~20Hz).
  */
-function broadcastGameState(players, enemies, pickups, score, waveIdx, phase, currentSection, sectionOpen) {
+function broadcastGameState(players, enemies, pickups, score, waveIdx, phase, currentSection) {
   if (!MP.channel || !MP.isHost) return;
 
   const data = {
@@ -394,7 +394,7 @@ function broadcastGameState(players, enemies, pickups, score, waveIdx, phase, cu
       id: pk._mpId, type: pk.pickupType,
       x: Math.round(pk.pos.x), y: Math.round(pk.pos.y),
     })),
-    score, waveIdx, phase, currentSection, sectionOpen,
+    score, waveIdx, phase, currentSection,
     t: Date.now(),
   };
 

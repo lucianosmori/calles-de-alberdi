@@ -21,6 +21,8 @@ const CAM_LERP_Y         = 0.04;  // vertical smoothing (subtle)
 const CAM_VERT_RANGE     = 20;    // max px camera shifts vertically
 const GO_ARROW_BLINK_HZ  = 3.5;   // "GO >>>" indicator flash speed
 const SECTION_WALL_MARGIN = 20;   // px inset from section edge for invisible wall
+const MAX_ACTIVE_ENEMIES  = 8;   // cap simultaneous enemies to prevent over-spawning
+const SPAWN_RIGHT_BIAS    = 0.75; // 75% of enemies spawn to the right of the player
 
 // ── Dialogue system ───────────────────────────────────────────────────────────
 const DIALOGUE_CHARS_PER_SEC   = 30;   // typewriter speed (characters/sec)
@@ -195,8 +197,8 @@ const LEVELS = [
   // ── Level 2 — Barrio Alberdi ──────────────────────────────────────────────
   {
     id: 2, name: "Barrio Alberdi", subtitle: "El Barrio",
-    skyCol: [70, 100, 160], groundCol: [185, 178, 165],
-    weather: "overcast",
+    skyCol: [110, 175, 240], groundCol: [200, 195, 175],
+    weather: "clear",
     levelWidth: 2400,
     sections: [
       { startX: 0,    endX: 800  },
@@ -278,8 +280,8 @@ const LEVELS = [
   // ── Level 3 — La Cañada ──────────────────────────────────────────────────
   {
     id: 3, name: "La Cañada", subtitle: "El Paseo",
-    skyCol: [95, 145, 210], groundCol: [200, 195, 180],
-    weather: "rain",
+    skyCol: [210, 130, 60], groundCol: [195, 175, 150],
+    weather: "sunset",
     levelWidth: 3200,
     sections: [
       { startX: 0,    endX: 800  },
@@ -370,8 +372,8 @@ const LEVELS = [
   // ── Level 4 — Centro ─────────────────────────────────────────────────────
   {
     id: 4, name: "Centro", subtitle: "La Final",
-    skyCol: [55, 80, 140], groundCol: [210, 205, 195],
-    weather: "rain",
+    skyCol: [15, 20, 45], groundCol: [80, 75, 70],
+    weather: "night",
     levelWidth: 3200,
     sections: [
       { startX: 0,    endX: 800  },
