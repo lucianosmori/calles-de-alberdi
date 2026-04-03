@@ -104,15 +104,22 @@ for (const bName of ["boss_comisario", "boss_barra_brava", "boss_puntero", "boss
   });
 }
 
-// NPCs (4×1 grid, 116×126 cells)
-for (const nName of ["npc_belgrano_fan", "npc_feminist", "npc_peronist", "npc_trapito", "npc_vecina"]) {
+// NPCs (8×1 grid, 116×126 cells)
+for (const nName of ["npc_belgrano_fan", "npc_feminist", "npc_peronist", "npc_trapito"]) {
   loadSprite(nName, `assets/${nName}.png`, {
-    sliceX: 4, sliceY: 1,
+    sliceX: 8, sliceY: 1,
     anims: {
-      walk: { from: 0, to: 3, speed: 6, loop: true },
+      walk: { from: 0, to: 7, speed: 8, loop: true },
     },
   });
 }
+// Vecina still 4×1 (pending Nano Banana regen)
+loadSprite("npc_vecina", "assets/npc_vecina.png", {
+  sliceX: 4, sliceY: 1,
+  anims: {
+    walk: { from: 0, to: 3, speed: 6, loop: true },
+  },
+});
 
 // Pickups (4×1 grid, 48×48 cells)
 for (const pName of ["pickup_empanada", "pickup_mate", "pickup_fernet", "pickup_choripan"]) {
